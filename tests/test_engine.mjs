@@ -115,6 +115,26 @@ check("registrableDomain simple", registrableDomain("mail.google.com") === "goog
 check("registrableDomain co.uk", registrableDomain("shop.example.co.uk") === "example.co.uk");
 check("registrableDomain bare", registrableDomain("example.com") === "example.com");
 
+// Public suffix handling. The private section of the list is the part that
+// matters most here: a page on free hosting must not share a registrable
+// domain with the platform or with anyone else's page on it, or every
+// github.io site — hostile and legitimate alike — looks like one domain.
+check("psl separates free-hosting subdomains",
+  registrableDomain("evil.github.io") === "evil.github.io");
+check("psl free-hosting siblings stay distinct",
+  registrableDomain("evil.github.io") !== registrableDomain("legit.github.io"));
+check("psl vercel", registrableDomain("phish.vercel.app") === "phish.vercel.app");
+check("psl pages.dev", registrableDomain("scam.pages.dev") === "scam.pages.dev");
+check("psl deep private suffix",
+  registrableDomain("a.b.herokuapp.com") === "b.herokuapp.com");
+check("psl multi-part icann", registrableDomain("a.b.c.co.uk") === "c.co.uk");
+check("psl indian bank suffix", registrableDomain("foo.sbi.co.in") === "sbi.co.in");
+check("psl host that is itself a suffix",
+  registrableDomain("github.io") === "github.io");
+check("psl unknown tld falls back to last two labels",
+  registrableDomain("a.b.unknown-tld-xyz") === "b.unknown-tld-xyz");
+check("psl single label", registrableDomain("localhost") === "localhost");
+
 const shortener = analyzeUrls("click http://bit.ly/abc123 now");
 check("detects shortener", shortener.signals.some((s) => s.id === "url_shortener"));
 

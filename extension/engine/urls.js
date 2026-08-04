@@ -4,6 +4,7 @@
 // changes far more slowly than the wording around it.
 
 import { extractUrls } from "../lib/text.js";
+import { PSL_RULES, PSL_WILDCARDS, PSL_EXCEPTIONS } from "./psl-data.js";
 
 // Brands impersonated often enough to be worth lookalike-checking. Each entry
 // is the legitimate registrable domain; anything that *looks* like the brand
@@ -41,14 +42,41 @@ const HIGH_RISK_TLDS = new Set([
   "rest", "cam", "quest", "cfd", "sbs", "lol",
 ]);
 
-// Multi-part public suffixes we need to look past to find the registrable
-// domain. Not the full PSL — that's ~10k entries and would bloat the bundle
-// for marginal gain — but it covers the suffixes that actually show up.
-const MULTI_PART_SUFFIXES = new Set([
-  "co.uk", "org.uk", "ac.uk", "gov.uk", "co.in", "net.in", "org.in", "gov.in",
-  "ac.in", "res.in", "com.au", "net.au", "org.au", "co.nz", "co.za", "com.br",
-  "com.mx", "com.sg", "co.jp", "or.jp", "com.cn", "co.kr", "com.tr",
-]);
+// Public suffix lookup, backed by the full Mozilla list in psl-data.js.
+//
+// This used to be a hand-picked set of ~20 suffixes, which was wrong in a way
+// that mattered: it had no entry for hosting platforms, so `evil.github.io`
+// and `legit.github.io` both reduced to `github.io`. Free hosting is where a
+// large share of phishing pages actually live, and treating every page on a
+// platform as one domain made them indistinguishable — including from the
+// platform's own legitimate pages.
+//
+// Returns the public suffix for a hostname, or null if none matches (in which
+// case the caller falls back to the default "*" rule from the spec).
+function publicSuffix(host) {
+  const labels = host.split(".");
+
+  // Exceptions win outright: `!city.kawasaki.jp` carves that name back out of
+  // the `*.kawasaki.jp` wildcard, making the suffix one label shorter.
+  for (let i = 0; i < labels.length; i += 1) {
+    if (PSL_EXCEPTIONS.has(labels.slice(i).join("."))) {
+      return labels.slice(i + 1).join(".");
+    }
+  }
+
+  // Otherwise the longest matching rule wins. Walking left to right tries the
+  // longest candidate first, so the first hit is the answer.
+  for (let i = 0; i < labels.length; i += 1) {
+    const candidate = labels.slice(i).join(".");
+    if (PSL_RULES.has(candidate)) return candidate;
+    // A `*.foo` rule makes any single label under `foo` a suffix itself.
+    if (i + 1 < labels.length && PSL_WILDCARDS.has(labels.slice(i + 1).join("."))) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
 
 function hostOf(rawUrl) {
   const withScheme = /^https?:\/\//i.test(rawUrl) ? rawUrl : `http://${rawUrl}`;
@@ -60,13 +88,25 @@ function hostOf(rawUrl) {
 }
 
 export function registrableDomain(host) {
-  const parts = host.split(".");
-  if (parts.length <= 2) return host;
-  const lastTwo = parts.slice(-2).join(".");
-  if (MULTI_PART_SUFFIXES.has(lastTwo) && parts.length >= 3) {
-    return parts.slice(-3).join(".");
+  if (!host) return host;
+
+  const suffix = publicSuffix(host);
+
+  // No rule matched. The spec's default is "*", meaning the last label is the
+  // suffix — so the registrable domain is the last two labels, which is what
+  // the old hand-rolled version always did.
+  if (suffix === null) {
+    const parts = host.split(".");
+    return parts.length <= 2 ? host : parts.slice(-2).join(".");
   }
-  return lastTwo;
+
+  // The hostname *is* a public suffix (`github.io`, `co.uk`). Nobody registered
+  // it, so there is no registrable domain below it — hand back the host itself
+  // rather than inventing one.
+  if (suffix === host) return host;
+
+  const suffixLabels = suffix ? suffix.split(".").length : 0;
+  return host.split(".").slice(-(suffixLabels + 1)).join(".");
 }
 
 // Levenshtein with an early bail-out: we only ever ask "is this within 2

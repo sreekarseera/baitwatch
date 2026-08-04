@@ -69,6 +69,13 @@ leetspeak folding (`paypa1.com`, `рaypal.com`, `paypal-secure.com`,
 `amazon.com.delivery.tk`), link shorteners, high-abuse TLDs, raw-IP hosts,
 punycode, and the `https://apple.com@evil.tk` username trick.
 
+Domain boundaries come from the full Mozilla Public Suffix List, which matters
+more than it sounds. Its private section covers hosting platforms, so
+`evil.github.io` and `legit.github.io` are correctly treated as two separate
+domains. Free hosting is where a large share of phishing pages actually live,
+and any shorter list collapses every page on a platform — hostile and
+legitimate alike — into one.
+
 **3. On-device classifier** — the TF-IDF + logistic regression model from V1,
 exported to JSON and re-implemented in ~40 lines of JavaScript. No WebAssembly
 (Manifest V3's CSP makes that a fight), no multi-megabyte runtime, no fetch:
@@ -142,8 +149,18 @@ extension/
   options/     settings, API key, model info
   lib/         storage, text utilities, CSV export
 training/      dataset, trainer, JSON exporter, icon generator
+tools/         build script for the public suffix list
 tests/         parity, engine, browser smoke
 ```
+
+## License
+
+BaitWatch is MIT licensed — see [`LICENSE`](LICENSE).
+
+`extension/engine/psl-data.js` is generated from the [Mozilla Public Suffix
+List](https://publicsuffix.org/), which is licensed under MPL-2.0. That license
+covers the data file alone and does not extend to the rest of the project.
+Regenerate it with `python3 tools/build_psl.py`.
 
 ## Known limits
 
