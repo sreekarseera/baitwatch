@@ -1,0 +1,33 @@
+# Pre-tested demo messages — every result below was verified against the
+# actual model before demo day. Copy-paste these exactly; do not improvise
+# or retype from memory (small wording changes can change the score).
+
+## SCAMS (safe to demo — comfortable margins)
+
+[SCAM 79%] URGENT: Your bank account has been suspended due to suspicious activity. Verify your identity within 24 hours or your account will be permanently closed.
+
+[SCAM 79%] Congratulations! You won a $1000 Amazon gift card. Click here to claim your prize now before it expires!
+
+[SCAM 63%] Hello, this is Microsoft support. We detected a virus on your computer. Install AnyDesk so our technician can fix it remotely.
+
+[SCAM 62%] Mom this is my new number, my phone broke. I need money urgently for the hospital, please send it to this UPI id.
+
+[SCAM 65%] Your KYC verification is pending. Complete it today to avoid account deactivation.
+
+## LEGIT (safe to demo — model does not false-positive on these)
+
+[SAFE 76%] Hey, are we still on for lunch tomorrow at noon? Let me know.
+
+[SAFE 69%] Your order has been shipped and will arrive on Thursday. Track your package in the app.
+
+[SAFE 65%] Meeting moved to 3pm, conference room B. Bring the quarterly report.
+
+## AVOID LIVE (borderline — correct today, but too close to the line)
+
+[SAFE 51% — coin flip] Your OTP for logging in to the college portal is 445211. Do not share it with anyone.
+
+## For the banner demo
+
+Sender email to use with the first scam message: security.alert.desk@gmail.com
+(analyzing the scam with this sender auto-adds it to the blocklist; then type
+it into a Gmail compose window to trigger the live banner)

@@ -1,0 +1,9 @@
+backend/venv/
+__pycache__/
+*.pyc
+.DS_Store
+.uvicorn-test.log
+
+# Model artifacts are committed (the extension needs them at runtime),
+# but training scratch is not.
+training/model/metrics.json

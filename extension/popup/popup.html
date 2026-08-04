@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="popup.css" />
+    <title>BaitWatch</title>
+  </head>
+  <body>
+    <header>
+      <h1>Bait<span>Watch</span></h1>
+      <button id="openSettings" class="icon-btn" title="Settings" aria-label="Settings">⚙</button>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-panel="check" role="tab" aria-selected="true">Check</button>
+      <button class="tab" data-panel="history" role="tab" aria-selected="false">History</button>
+      <button class="tab" data-panel="senders" role="tab" aria-selected="false">Senders</button>
+    </nav>
+
+    <section id="panel-check" class="panel active">
+      <textarea
+        id="input"
+        rows="5"
+        placeholder="Paste a suspicious message here — or select text on any page, right-click, and choose &quot;Check this text for scams&quot;."
+      ></textarea>
+      <input id="sender" type="text" placeholder="Sender email or number (optional)" />
+      <div class="row">
+        <button id="analyze" class="primary">Check message</button>
+        <button id="useSelection" class="ghost" title="Pull the selected text from the current page">
+          Use selection
+        </button>
+      </div>
+      <div class="row">
+        <button
+          id="scanPage"
+          class="ghost wide"
+          title="Judge this whole page — its text, every link on it, and the site's own address"
+        >
+          🔎 Scan this entire page
+        </button>
+      </div>
+      <div id="result" class="result" hidden></div>
+    </section>
+
+    <section id="panel-history" class="panel">
+      <div class="row space">
+        <p id="statLine" class="muted"></p>
+        <div>
+          <button id="exportHistory" class="ghost small">Export CSV</button>
+          <button id="clearHistory" class="ghost small">Clear</button>
+        </div>
+      </div>
+      <ul id="history" class="list"></ul>
+      <p id="historyEmpty" class="empty">Nothing checked yet.</p>
+    </section>
+
+    <section id="panel-senders" class="panel">
+      <h2>Blocked</h2>
+      <ul id="blocklist" class="list compact"></ul>
+      <p id="blocklistEmpty" class="empty">No blocked senders.</p>
+
+      <h2>Marked as safe</h2>
+      <ul id="allowlist" class="list compact"></ul>
+      <p id="allowlistEmpty" class="empty">No senders marked safe.</p>
+
+      <button id="exportBlocklist" class="ghost small">Export blocklist</button>
+    </section>
+
+    <footer id="footer" class="muted"></footer>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

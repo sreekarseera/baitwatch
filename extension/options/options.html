@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="options.css" />
+    <title>BaitWatch — Settings</title>
+  </head>
+  <body>
+    <main>
+      <h1>BaitWatch</h1>
+      <p class="sub">Version 2.0 — settings</p>
+
+      <section>
+        <h2>Scanning</h2>
+
+        <label class="toggle">
+          <input type="checkbox" id="autoScan" />
+          <span>
+            <strong>Scan messages automatically</strong>
+            <small>Check messages as you open them, instead of pasting them in by hand.</small>
+          </span>
+        </label>
+
+        <div class="indent">
+          <label class="toggle">
+            <input type="checkbox" id="scanGmail" />
+            <span><strong>Gmail</strong><small>Reads open emails and their sender addresses.</small></span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" id="scanChat" />
+            <span
+              ><strong>WhatsApp Web and Telegram Web</strong
+              ><small>Checks incoming messages only, never what you send.</small></span
+            >
+          </label>
+          <label class="toggle">
+            <input type="checkbox" id="scanGeneric" />
+            <span
+              ><strong>Every other site</strong
+              ><small>A general scan of anything that looks like a message. Noisier than the others.</small></span
+            >
+          </label>
+        </div>
+
+        <label class="field">
+          <span>Warn me about</span>
+          <select id="minSeverityToWarn">
+            <option value="suspicious">Anything suspicious or worse (recommended)</option>
+            <option value="dangerous">Only near-certain scams</option>
+          </select>
+        </label>
+      </section>
+
+      <section>
+        <h2>Second opinion from Claude</h2>
+        <p class="note">
+          Off by default. When on, messages the on-device check can't settle confidently are sent to
+          Anthropic's API using <em>your</em> API key, and Claude explains in plain language what the
+          sender is trying to do. Everything else stays on your device. There is no server in this
+          project — your key is stored locally and used only by this extension.
+        </p>
+
+        <label class="toggle">
+          <input type="checkbox" id="cloudTier" />
+          <span
+            ><strong>Ask Claude when the local check is uncertain</strong
+            ><small>Roughly 1 in 5 messages. Typical cost: well under a cent each.</small></span
+          >
+        </label>
+
+        <label class="field">
+          <span>Anthropic API key</span>
+          <div class="key-row">
+            <input id="apiKey" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" />
+            <button id="toggleKey" class="ghost small" type="button">Show</button>
+            <button id="testKey" class="ghost small" type="button">Test</button>
+          </div>
+          <small class="hint">
+            Create one at <span class="mono">console.anthropic.com</span> → API Keys. Stored only in
+            this browser.
+          </small>
+        </label>
+        <p id="keyStatus" class="status" hidden></p>
+      </section>
+
+      <section>
+        <h2>On-device model</h2>
+        <dl id="modelInfo" class="kv">
+          <dt>Status</dt><dd id="modelStatus">Loading…</dd>
+        </dl>
+      </section>
+
+      <section>
+        <h2>Your data</h2>
+        <p class="note">
+          History, blocked senders, and your API key live in this browser's local storage and are
+          never uploaded. Removing the extension deletes all of it.
+        </p>
+        <button id="wipe" class="danger" type="button">Delete everything stored by this extension</button>
+      </section>
+
+      <p id="saved" class="saved" hidden>Saved</p>
+    </main>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

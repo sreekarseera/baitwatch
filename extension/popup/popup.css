@@ -1,0 +1,237 @@
+:root {
+  --bg: #ffffff;
+  --fg: #16161a;
+  --muted: #6b6b73;
+  --line: #e4e4e8;
+  --surface: #f7f7f9;
+  --danger: #b3261e;
+  --warn: #a2660a;
+  --ok: #1b6b3a;
+  --accent: #16161a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17171a;
+    --fg: #f2f2f4;
+    --muted: #9a9aa3;
+    --line: #2e2e34;
+    --surface: #202026;
+    --danger: #f2705f;
+    --warn: #e0a33a;
+    --ok: #55c98a;
+    --accent: #f2f2f4;
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  width: 380px;
+  /* Chrome anchors the popup to its right edge and widens it leftward when
+     content overflows. Verdict reasons embed full hostnames — long unbreakable
+     strings — so without a hard cap plus wrapping, one long URL drags the whole
+     popup sideways across the screen. */
+  max-width: 380px;
+  overflow-x: hidden;
+  max-height: 580px;
+  overflow-y: auto;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+
+/* Break anywhere, including mid-hostname, rather than pushing the layout. */
+.result,
+.result p,
+.result li,
+.list .mono {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  padding: 12px 14px 10px;
+}
+
+h1 { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; }
+h1 span { color: var(--muted); font-weight: 400; }
+
+h2 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 14px 0 6px;
+}
+h2:first-child { margin-top: 0; }
+
+.icon-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 15px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 5px;
+}
+.icon-btn:hover { background: var(--surface); color: var(--fg); }
+
+.tabs { display: flex; gap: 2px; padding: 0 10px; border-bottom: 1px solid var(--line); }
+
+.tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  padding: 7px 10px;
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+.tab:hover { color: var(--fg); }
+.tab.active { color: var(--fg); border-bottom-color: var(--accent); font-weight: 550; }
+
+.panel { display: none; padding: 12px 14px 14px; }
+.panel.active { display: block; }
+
+textarea,
+input[type="text"] {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--fg);
+  font: inherit;
+  padding: 8px 9px;
+  resize: vertical;
+}
+textarea:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+input[type="text"] { margin-top: 7px; }
+
+.row { display: flex; gap: 7px; margin-top: 9px; align-items: center; }
+.row.space { justify-content: space-between; margin-top: 0; margin-bottom: 8px; }
+
+button.primary,
+button.ghost {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 7px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--fg);
+}
+button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+button.primary:disabled { opacity: 0.55; cursor: default; }
+button.ghost:hover { border-color: var(--muted); }
+button.small { padding: 4px 8px; font-size: 11px; }
+button.wide { width: 100%; }
+button:disabled { opacity: 0.55; cursor: default; }
+
+/* ------------------------------- result card ------------------------------ */
+
+.result { margin-top: 12px; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+
+.result .head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 11px;
+  color: #fff;
+  font-weight: 600;
+  font-size: 12.5px;
+}
+.result.dangerous .head { background: var(--danger); }
+.result.suspicious .head { background: var(--warn); }
+.result.safe .head { background: var(--ok); }
+@media (prefers-color-scheme: dark) {
+  .result .head { color: #17171a; }
+}
+.result .head .score { margin-left: auto; font-weight: 500; opacity: 0.9; font-size: 11.5px; }
+
+.result .body { padding: 10px 11px; background: var(--surface); }
+.result .lede { margin-bottom: 7px; }
+.result .scanned {
+  font-size: 11.5px;
+  color: var(--muted);
+  padding-bottom: 7px;
+  margin-bottom: 7px;
+  border-bottom: 1px solid var(--line);
+}
+.result ul { list-style: none; }
+.result li { position: relative; padding-left: 15px; margin-bottom: 5px; color: var(--muted); }
+.result li::before { content: "•"; position: absolute; left: 4px; }
+.result .advice {
+  margin-top: 9px;
+  padding: 7px 9px;
+  background: var(--bg);
+  border-left: 3px solid var(--muted);
+  border-radius: 4px;
+}
+.result .tier { margin-top: 9px; font-size: 11px; color: var(--muted); }
+.result .actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+
+.chips { display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px; }
+.chip {
+  font: inherit;
+  font-size: 11.5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-align: left;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.chip:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+.chip:disabled { opacity: 0.6; cursor: default; }
+
+/* ---------------------------------- lists --------------------------------- */
+
+.list { list-style: none; }
+
+.list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+}
+.list li:last-child { border-bottom: none; }
+.list.compact li { padding: 5px 0; align-items: center; }
+
+.dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; margin-top: 5px; }
+.dot.dangerous { background: var(--danger); }
+.dot.suspicious { background: var(--warn); }
+.dot.safe { background: var(--ok); }
+
+.entry { flex: 1; min-width: 0; }
+.entry .text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.entry .meta { font-size: 11px; color: var(--muted); margin-top: 1px; }
+
+.remove {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.remove:hover { color: var(--danger); background: var(--surface); }
+
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; flex: 1; }
+
+.muted { color: var(--muted); font-size: 11.5px; }
+.empty { color: var(--muted); font-size: 12px; padding: 10px 0; }
+
+footer { padding: 8px 14px 12px; border-top: 1px solid var(--line); }
