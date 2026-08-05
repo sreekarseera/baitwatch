@@ -67,7 +67,21 @@ gets no discount.
 **2. URL analysis** — lookalike domains via edit distance plus homoglyph and
 leetspeak folding (`paypa1.com`, `arnazon.com`, `paypal-secure.com`,
 `amazon.com.delivery.tk`), link shorteners, high-abuse TLDs, raw-IP hosts,
-punycode, and the `https://apple.com@evil.tk` username trick.
+and the `https://apple.com@evil.tk` username trick.
+
+Non-Latin lookalikes are decoded before folding. A Cyrillic `рaypal.com`
+reaches an extension as `xn--aypal-uye.com`, because that is what `new URL()`
+returns — so folding runs on an ASCII envelope and finds nothing. With RFC 3492
+decoding in front of it (`lib/punycode.js`), the Cyrillic `р` folds onto Latin
+`p` like any other homoglyph and the warning can name the brand instead of
+muttering about character sets.
+
+Punycode on its own is not the signal, though. A domain written wholly in
+Cyrillic, Han, or Devanagari is just a domain in that language; treating all of
+them as suspicious flagged every legitimate German, Russian, Chinese and Indian
+address. What actually indicates an attack is a *single label mixing
+alphabets* — `рaypal` is one Cyrillic letter wearing five Latin ones. Checked
+per label, since `香港.com` pairing Han with a Latin TLD is completely ordinary.
 
 Domain boundaries come from the full Mozilla Public Suffix List, which matters
 more than it sounds. Its private section covers hosting platforms, so
@@ -169,7 +183,7 @@ extension/
   background/  service worker — the only place analysis runs
   popup/       manual check, history, sender lists
   options/     settings, API key, model info
-  lib/         storage, text utilities, CSV export
+  lib/         storage, text utilities, punycode, CSV export
 training/      dataset, trainer, JSON exporter, icon generator
 tools/         build script for the public suffix list
 tests/         parity, engine, browser smoke
@@ -196,12 +210,10 @@ Regenerate it with `python3 tools/build_psl.py`.
   heuristic and URL layers, not the classifier, are what the verdict mostly
   rests on. Broadening the dataset with real-world scam corpora is the single
   highest-value improvement available.
-- **Non-Latin lookalike domains are caught, but not named.** `paypa1.com` and
-  `arnazon.com` fold onto the brand they imitate and are reported as such. A
-  Cyrillic `рaypal.com` arrives already punycode-encoded (`xn--aypal-8gg.com`),
-  which no amount of character folding maps back to "paypal", so it is caught
-  by the weaker punycode rule and the warning can't name the brand. Decoding
-  punycode before folding is what would close this.
+- **Homoglyph folding is a hand-picked table, not the full confusables set.**
+  The Cyrillic and Greek letters with exact Latin twins are covered, which is
+  where the abuse concentrates, but Unicode defines thousands more. Importing
+  Unicode's own `confusables.txt` would make this exhaustive.
 - **Adapters are selector-based.** Gmail and WhatsApp change their DOM without
   notice; if auto-scan goes quiet on a site, the selectors in
   `extension/content/adapters.js` are the first place to look.
@@ -216,4 +228,4 @@ Regenerate it with `python3 tools/build_psl.py`.
 | Output | label + confidence | verdict, score, and reasons in plain language |
 | Warning | banner for blocked emails | in-page card with reasons and actions, shadow-DOM isolated |
 | Sender lists | blocklist | blocklist + allowlist |
-| Tests | 17 e2e checks against the backend | 96 engine checks, model parity, 15 browser checks |
+| Tests | 17 e2e checks against the backend | 117 engine checks, model parity, 15 browser checks |

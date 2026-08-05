@@ -4,6 +4,7 @@
 // changes far more slowly than the wording around it.
 
 import { extractUrls } from "../lib/text.js";
+import { punycodeToUnicode } from "../lib/punycode.js";
 import { PSL_RULES, PSL_WILDCARDS, PSL_EXCEPTIONS } from "./psl-data.js";
 
 // Brands impersonated often enough to be worth checking for. `domains` lists
@@ -84,6 +85,30 @@ function publicSuffix(host) {
   return null;
 }
 
+export // Whether any single label mixes Latin letters with letters from another
+// alphabet. That — not punycode itself — is the attack: "рaypal" is a Cyrillic
+// р wearing five Latin letters. A domain written wholly in Cyrillic, Han, or
+// Devanagari is just a domain in that language, and treating all punycode as
+// suspicious flagged every legitimate German, Russian, Chinese and Indian
+// address. Checked per label, since "香港.com" mixing Han with a Latin TLD is
+// completely normal.
+const LATIN_LETTER = /\p{Script=Latin}/u;
+const ANY_LETTER = /\p{L}/u;
+
+function mixesScripts(decodedHost) {
+  for (const label of decodedHost.split(".")) {
+    let latin = false;
+    let other = false;
+    for (const ch of label) {
+      if (!ANY_LETTER.test(ch)) continue;
+      if (LATIN_LETTER.test(ch)) latin = true;
+      else other = true;
+      if (latin && other) return true;
+    }
+  }
+  return false;
+}
+
 export function hostOf(rawUrl) {
   const withScheme = /^https?:\/\//i.test(rawUrl) ? rawUrl : `http://${rawUrl}`;
   try {
@@ -142,10 +167,19 @@ export function editDistance(a, b, maxDistance = Infinity) {
 // Hyphens are deliberately preserved: they're the separator in the
 // "brand-plus-word" pattern below, and dropping them would erase the seam.
 function skeleton(domain) {
-  return domain
+  // Decode first. A non-Latin lookalike reaches us as "xn--aypal-uye.com",
+  // and folding an ASCII envelope accomplishes nothing — the characters this
+  // function exists to catch are only visible on the other side of the decode.
+  return punycodeToUnicode(domain)
     .normalize("NFKD")
     .replace(/[̀-ͯ]/g, "")
-    .replace(/[аеорсхуіѕ]/g, (ch) => ({ а: "a", е: "e", о: "o", р: "p", с: "c", х: "x", у: "y", і: "i", ѕ: "s" }[ch]))
+    .replace(/[аеорсхуіѕӏјԁԛԝοαρεινκτυχ]/g, (ch) => ({
+      // Cyrillic
+      а: "a", е: "e", о: "o", р: "p", с: "c", х: "x", у: "y", і: "i", ѕ: "s",
+      ӏ: "l", ј: "j", ԁ: "d", ԛ: "q", ԝ: "w",
+      // Greek
+      ο: "o", α: "a", ρ: "p", ε: "e", ι: "i", ν: "v", κ: "k", τ: "t", υ: "u", χ: "x",
+    }[ch]))
     .replace(/[01345]/g, (ch) => ({ "0": "o", "1": "l", "3": "e", "4": "a", "5": "s" }[ch]))
     // "rn" renders almost identically to "m" at normal size — "arnazon.com"
     // is a real and frequently-used registration. Folding it here rather than
@@ -225,8 +259,15 @@ export function analyzeUrls(text, extraUrls = []) {
 
     const lookalike = lookalikeMatch(host);
     if (lookalike) {
+      // What the user actually sees. Telling someone that "xn--aypal-uye.com"
+      // imitates PayPal explains nothing — the whole attack is that it renders
+      // as "рaypal.com", so that is what the warning has to lead with.
+      const shown = punycodeToUnicode(host);
       const LOOKALIKE_DETAIL = {
-        homoglyph: `"${host}" is built from characters chosen to read as ${lookalike.brand}'s real domain (${lookalike.legit}) — it is a different site owned by someone else.`,
+        homoglyph:
+          shown === host
+            ? `"${host}" is built from characters chosen to read as ${lookalike.brand}'s real domain (${lookalike.legit}) — it is a different site owned by someone else.`
+            : `"${shown}" is spelled with non-Latin characters chosen to read as ${lookalike.brand}'s real domain (${lookalike.legit}). The address is really "${host}" — a different site owned by someone else.`,
         typo: `"${host}" is one or two characters away from ${lookalike.brand}'s real domain (${lookalike.legit}).`,
         subdomain: `"${host}" puts ${lookalike.brand}'s name in a subdomain of an unrelated site — the real domain is ${lookalike.legit}.`,
         compound: `"${host}" bolts a reassuring word onto ${lookalike.brand}'s name. ${lookalike.brand} only uses ${lookalike.legit}.`,
@@ -266,11 +307,18 @@ export function analyzeUrls(text, extraUrls = []) {
       });
     }
 
-    if (host.startsWith("xn--") || host.includes(".xn--")) {
+    // Only worth saying on its own. Once a lookalike has been identified the
+    // warning already names the brand being imitated, which is the same fact
+    // told better.
+    if (!lookalike && (host.startsWith("xn--") || host.includes(".xn--"))) {
+      const shown = punycodeToUnicode(host);
+      const mixed = mixesScripts(shown);
       signals.push({
-        id: "punycode_host",
-        weight: 1.6,
-        detail: `"${host}" is a punycode domain — it renders as non-Latin characters that can imitate a real brand.`,
+        id: mixed ? "mixed_script_host" : "punycode_host",
+        weight: mixed ? 1.6 : 0.5,
+        detail: mixed
+          ? `"${shown}" mixes alphabets — some of those letters are not the Latin ones they look like. Its actual address is "${host}".`
+          : `"${shown}" is an internationalized domain written in a non-Latin alphabet. Its actual address is "${host}".`,
       });
     }
 

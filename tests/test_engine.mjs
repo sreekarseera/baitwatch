@@ -23,6 +23,7 @@ globalThis.fetch = async (path) => ({
 const { analyzeLocal, shouldEscalate, VERDICT } = await import(join(ext, "engine", "engine.js"));
 const { analyzeUrls, editDistance, registrableDomain } = await import(join(ext, "engine", "urls.js"));
 const { analyzeHeuristics } = await import(join(ext, "engine", "heuristics.js"));
+const { punycodeToUnicode } = await import(join(ext, "lib", "punycode.js"));
 
 let passed = 0;
 const failures = [];
@@ -107,6 +108,40 @@ for (const [name, text] of LEGIT) {
   );
 }
 
+/* -------------------------------- punycode --------------------------------- */
+// Vectors from RFC 3492 section 7.1, plus the malformed input a hostile
+// hostname can carry. A hand-written decoder of a published standard is
+// exactly the kind of code that should be pinned to the standard's own tests.
+
+for (const [encoded, expected] of [
+  ["xn--maana-pta", "mañana"],
+  ["xn--bcher-kva", "bücher"],
+  ["xn--egbpdaj6bu4bxfgehfvwxn", "ليهمابتكلموشعربي؟"],
+  ["xn--3e0b707e", "한국"],
+  ["xn--80akhbyknj4f", "испытание"],
+  ["xn--j6w193g", "香港"],
+]) {
+  check(
+    `punycode decodes ${encoded}`,
+    punycodeToUnicode(encoded) === expected,
+    `got ${JSON.stringify(punycodeToUnicode(encoded))}`
+  );
+}
+
+for (const malformed of ["xn--", "xn--!!!", "xn---", "xn--a-#####", "example"]) {
+  check(
+    `malformed punycode is passed through, not thrown on (${malformed})`,
+    punycodeToUnicode(malformed) === malformed,
+    `got ${JSON.stringify(punycodeToUnicode(malformed))}`
+  );
+}
+
+check(
+  "only punycode labels are touched",
+  punycodeToUnicode("mixed.xn--bcher-kva.co.uk") === "mixed.bücher.co.uk",
+  punycodeToUnicode("mixed.xn--bcher-kva.co.uk")
+);
+
 /* ------------------------------ URL analysis ------------------------------- */
 
 check("editDistance basic", editDistance("paypal", "paypa1") === 1);
@@ -152,8 +187,15 @@ check(
   `fired: ${genuineSub.signals.map((s) => s.id).join(", ") || "none"}`
 );
 
+// A punycode PayPal spoof. This used to be reported as "a punycode domain",
+// which told the user nothing; decoding it first means the lookalike layer now
+// recognises the brand being imitated and says so.
 const punycode = analyzeUrls("visit https://xn--pypal-4ve.com/login");
-check("detects punycode", punycode.signals.some((s) => s.id === "punycode_host"));
+check(
+  "punycode spoof is decoded and attributed to the brand",
+  punycode.signals.some((s) => s.id === "lookalike_domain"),
+  `fired: ${punycode.signals.map((s) => s.id).join(", ") || "none"}`
+);
 
 const noUrls = analyzeUrls("there is no link in this message at all");
 check("no false URLs in plain text", noUrls.urls.length === 0, `found: ${noUrls.urls.join(", ")}`);
@@ -232,15 +274,56 @@ for (const [name, url] of [
 }
 
 // Non-Latin homoglyphs arrive already punycode-encoded — `new URL()` hands
-// back "xn--aypal-8gg.com", which no amount of character folding will map onto
-// "paypal". They are caught, but by the weaker punycode rule, so the warning
-// says "this renders as non-Latin characters" instead of naming the brand.
-// Decoding punycode before folding is what would close that gap.
-const cyrillic = analyzeUrls("", ["http://рaypal.com/login"]);
+// back "xn--aypal-uye.com" — so the folding has to happen on the far side of a
+// decode or it is folding an ASCII envelope.
+for (const [name, url, brand] of [
+  ["cyrillic paypal", "http://рaypal.com/login", "PayPal"],
+  ["all-cyrillic apple", "http://аррӏе.com/", "Apple"],
+  ["cyrillic google", "http://gооgle.com/", "Google"],
+  ["cyrillic netflix", "http://nеtflix.com/", "Netflix"],
+]) {
+  const idn = analyzeUrls("", [url]);
+  const signal = idn.signals.find((s) => s.id === "lookalike_domain");
+  check(
+    `IDN homoglyph is decoded and attributed (${name})`,
+    signal?.brand === brand,
+    `fired: ${idn.signals.map((s) => s.id).join(", ") || "nothing"}`
+  );
+}
+
+// The warning has to lead with what the user sees, not the encoded form —
+// telling someone "xn--aypal-uye.com" imitates PayPal explains nothing.
+const shown = analyzeUrls("", ["http://рaypal.com/login"]).signals.find(
+  (s) => s.id === "lookalike_domain"
+);
 check(
-  "a cyrillic lookalike is still caught, via punycode",
-  cyrillic.signals.some((s) => s.id === "punycode_host"),
-  `fired: ${cyrillic.signals.map((s) => s.id).join(", ") || "nothing"}`
+  "the warning shows the domain as it renders, and the real address",
+  shown.detail.includes("рaypal.com") && shown.detail.includes("xn--aypal-uye.com"),
+  shown.detail
+);
+
+// Mixing alphabets inside one label is the attack. A domain written wholly in
+// another alphabet is just a domain in that language — flagging those made
+// every legitimate German, Russian, Chinese and Indian address suspicious.
+for (const [name, url] of [
+  ["german", "https://münchen.de/"],
+  ["han", "https://香港.com/"],
+  ["cyrillic tld", "https://испытание.рф/"],
+  ["devanagari", "https://भारत.in/"],
+]) {
+  const idn = analyzeUrls("", [url]);
+  check(
+    `a legitimate internationalized domain is not alarming (${name})`,
+    idn.score < 1.0 && !idn.signals.some((s) => s.id === "mixed_script_host"),
+    `scored ${idn.score}, fired: ${idn.signals.map((s) => s.id).join(", ") || "nothing"}`
+  );
+}
+
+const mixedScript = analyzeUrls("", ["https://bаnking-secure.com/"]);
+check(
+  "a mixed-alphabet domain is flagged even with no brand to match",
+  mixedScript.signals.some((s) => s.id === "mixed_script_host"),
+  `fired: ${mixedScript.signals.map((s) => s.id).join(", ") || "nothing"}`
 );
 
 const realDomains = analyzeUrls("", [
