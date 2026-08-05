@@ -310,6 +310,14 @@ $("scanPage").addEventListener("click", async () => {
       // are where the danger is — the visible text is designed to look normal.
       extraUrls: page.extraUrls,
       source: "page",
+      // What the page claims to be, where it's served from, and what it's
+      // asking for — the inputs to the impersonation check.
+      page: {
+        url: page.url,
+        title: page.title,
+        credentialFields: page.credentialFields || [],
+        formTargets: page.formTargets || [],
+      },
     });
 
     if (!result || result.error) throw new Error(result?.error || "Analysis failed.");

@@ -216,11 +216,255 @@ check(
   `scored ${manyLinks.score}`
 );
 
+// Homoglyph domains that fold to the brand's domain *exactly*. These are the
+// most clear-cut impersonations there are, and were the ones the edit-distance
+// branch skipped: after folding it saw two identical labels and moved on.
+for (const [name, url] of [
+  ["leetspeak digit", "http://paypa1.com/login"],
+  ["rn read as m", "http://arnazon.com/order"],
+]) {
+  const folded = analyzeUrls("", [url]);
+  check(
+    `homoglyph domain is attributed to the brand (${name})`,
+    folded.signals.some((s) => s.id === "lookalike_domain"),
+    `${url} fired: ${folded.signals.map((s) => s.id).join(", ") || "nothing"}`
+  );
+}
+
+// Non-Latin homoglyphs arrive already punycode-encoded — `new URL()` hands
+// back "xn--aypal-8gg.com", which no amount of character folding will map onto
+// "paypal". They are caught, but by the weaker punycode rule, so the warning
+// says "this renders as non-Latin characters" instead of naming the brand.
+// Decoding punycode before folding is what would close that gap.
+const cyrillic = analyzeUrls("", ["http://рaypal.com/login"]);
+check(
+  "a cyrillic lookalike is still caught, via punycode",
+  cyrillic.signals.some((s) => s.id === "punycode_host"),
+  `fired: ${cyrillic.signals.map((s) => s.id).join(", ") || "nothing"}`
+);
+
+const realDomains = analyzeUrls("", [
+  "https://www.paypal.com/signin",
+  "https://www.amazon.in/orders",
+  "https://modern-kitchens.com/learn",
+]);
+check(
+  "folding does not misfire on real domains",
+  !realDomains.signals.some((s) => s.id === "lookalike_domain"),
+  `fired: ${realDomains.signals.map((s) => s.id).join(", ") || "nothing"}`
+);
+
 const dedup = analyzeUrls("see http://bit.ly/a", ["http://bit.ly/a", "http://bit.ly/b"]);
 check(
   "shortener signal is not multiplied by repeated links",
   dedup.signals.filter((s) => s.id === "url_shortener").length === 1,
   `${dedup.signals.filter((s) => s.id === "url_shortener").length} shortener signals`
+);
+
+/* --------------------------- brand impersonation --------------------------- */
+// The domain makes no attempt to look like the brand; the *page* does. Every
+// rule here is conjunctive, so the negatives below matter more than the
+// positives — this layer scores high enough to move a verdict on its own.
+
+function pageScan(text, page) {
+  return analyzeLocal(text, { extraUrls: [page.url], page });
+}
+
+const fakeLogin = await pageScan("Log in to your PayPal account to continue. Email. Password.", {
+  url: "https://secure-portal-9f2.com/login",
+  title: "PayPal - Log In",
+  credentialFields: ["password"],
+  formTargets: ["https://secure-portal-9f2.com/submit"],
+});
+check(
+  "page claiming a brand it isn't served by is flagged",
+  fakeLogin.reasons.some((r) => r.id === "brand_impersonation"),
+  `scored ${fakeLogin.score}, fired: ${fakeLogin.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+const otpHarvest = await pageScan("Enter the code we sent to your phone to restore access.", {
+  url: "https://verify-portal-x.com/otp",
+  title: "HDFC Bank NetBanking",
+  credentialFields: ["otp"],
+  formTargets: [],
+});
+check(
+  "an OTP-only field counts as a credential request",
+  otpHarvest.reasons.some((r) => r.id === "brand_impersonation"),
+  `fired: ${otpHarvest.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+const offsitePost = await pageScan("Sign in to Netflix to continue watching. Password.", {
+  url: "https://cdn-media-host.com/account",
+  title: "Netflix",
+  credentialFields: ["password"],
+  formTargets: ["https://collector-8811.com/save"],
+});
+check(
+  "a form posting credentials to a third site corroborates",
+  offsitePost.reasons.some((r) => r.id === "offsite_credential_post"),
+  `fired: ${offsitePost.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+const realBrand = await pageScan("Log in to your PayPal account to continue. Email. Password.", {
+  url: "https://www.paypal.com/signin",
+  title: "PayPal - Log In",
+  credentialFields: ["password"],
+  formTargets: ["https://www.paypal.com/auth"],
+});
+check(
+  "the brand's own login page is not impersonation",
+  realBrand.verdict === VERDICT.SAFE && !realBrand.reasons.some((r) => r.id === "brand_impersonation"),
+  `scored ${realBrand.score}, fired: ${realBrand.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+const brandSubdomain = await pageScan("Sign in. Password.", {
+  url: "https://signin.icicibank.com/login",
+  title: "ICICI Bank Internet Banking",
+  credentialFields: ["password"],
+  formTargets: [],
+});
+check(
+  "a subdomain of the real brand is not impersonation",
+  !brandSubdomain.reasons.some((r) => r.id === "brand_impersonation"),
+  `fired: ${brandSubdomain.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+const newsArticle = await pageScan(
+  "Apple announced the new iPhone today at an event in Cupertino. Subscribers can comment below.",
+  {
+    url: "https://theverge.com/2026/apple-iphone",
+    title: "Apple announces the new iPhone - The Verge",
+    credentialFields: ["password"],
+    formTargets: [],
+  }
+);
+check(
+  "an article about a brand, with a login box, is not impersonation",
+  newsArticle.verdict === VERDICT.SAFE,
+  `scored ${newsArticle.score}, fired: ${newsArticle.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+const ssoButton = await pageScan(
+  "Welcome back to Notely. Sign in with Google, or continue with your Apple ID. Password.",
+  {
+    url: "https://notely-app.com/login",
+    title: "Sign in - Notely",
+    credentialFields: ["password"],
+    formTargets: [],
+  }
+);
+check(
+  "a third-party SSO button is not a claim to be that brand",
+  !ssoButton.reasons.some((r) => r.id === "brand_impersonation"),
+  `fired: ${ssoButton.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+const noCredentials = await pageScan("Compare Netflix, Amazon and Apple TV subscription prices.", {
+  url: "https://streaming-deals.com/compare",
+  title: "Netflix vs Amazon Prime - which is cheaper?",
+  credentialFields: [],
+  formTargets: [],
+});
+check(
+  "naming brands without asking for credentials is not impersonation",
+  noCredentials.verdict === VERDICT.SAFE,
+  `scored ${noCredentials.score}, fired: ${noCredentials.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+const footerMention = await pageScan(
+  `${"Read our latest recipes and cooking guides. ".repeat(20)} We accept PayPal.`,
+  {
+    url: "https://recipes-daily.com/account",
+    title: "Recipes Daily",
+    credentialFields: ["password"],
+    formTargets: [],
+  }
+);
+check(
+  "a brand named far down the page is not a claim of identity",
+  !footerMention.reasons.some((r) => r.id === "brand_impersonation"),
+  `fired: ${footerMention.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+const lookalikeAndClaim = await pageScan("Log in to your PayPal account. Password.", {
+  url: "https://paypa1.com/login",
+  title: "PayPal",
+  credentialFields: ["password"],
+  formTargets: [],
+});
+check(
+  "a lookalike domain is not also billed as impersonation",
+  lookalikeAndClaim.reasons.some((r) => r.id === "lookalike_domain") &&
+    !lookalikeAndClaim.reasons.some((r) => r.id === "brand_impersonation"),
+  `fired: ${lookalikeAndClaim.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+// The whole-page scan exists to be used on sign-in pages, so the genuine ones
+// have to come back clean. They did not: "enter your password" read as a
+// credential request, and every real login page on the internet says it.
+for (const [name, url, title, text] of [
+  ["GitHub", "https://github.com/login", "Sign in to GitHub", "Sign in to GitHub. Enter your password."],
+  ["Amazon", "https://www.amazon.in/ap/signin", "Amazon Sign-In", "Sign in. Email or mobile phone number. Password. Forgot your password?"],
+  ["HDFC OTP", "https://netbanking.hdfcbank.com/otp", "HDFC Bank NetBanking", "Send OTP to your registered mobile. Enter the OTP below."],
+  ["hosted auth", "https://mycompany.atlassian.net/login", "Log in - Jira", "Log in to continue to Jira. Enter your password."],
+]) {
+  const real = await pageScan(text, {
+    url,
+    title,
+    credentialFields: text.includes("OTP") ? ["otp"] : ["password"],
+    formTargets: [],
+  });
+  check(
+    `a genuine sign-in page is not flagged (${name})`,
+    real.verdict === VERDICT.SAFE,
+    `scored ${real.score}, fired: ${real.reasons.map((r) => r.id).join(", ") || "none"}`
+  );
+}
+
+// The direction of the request is the signal, not the verb. A bank's own
+// "Send OTP to your registered mobile" button and a thief's "send me your OTP"
+// both contain "send".
+for (const [name, message] of [
+  ["share your OTP", "Dear customer, please share your OTP to verify your account."],
+  ["reply with PIN", "Reply with your ATM PIN to reactivate your card."],
+  ["send me your password", "IT here - send me your password so I can fix your mailbox."],
+  ["whatsapp me the OTP", "Kindly whatsapp me the OTP you just received."],
+]) {
+  const msg = await analyzeLocal(message);
+  check(
+    `a message asking you to hand over a secret still fires (${name})`,
+    msg.reasons.some((r) => r.id === "credential_request"),
+    `scored ${msg.score}, fired: ${msg.reasons.map((r) => r.id).join(", ") || "none"}`
+  );
+}
+
+const entryInMessage = await analyzeLocal(
+  "Enter your password at http://secure-verify.tk/login to restore access."
+);
+check(
+  "an entry verb still convicts in a message, where there is no form",
+  entryInMessage.reasons.some((r) => r.id === "credential_request"),
+  `fired: ${entryInMessage.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+const claimMismatch = await analyzeLocal(
+  "Your Netflix membership is on hold. Your payment could not be verified. Update your details at https://acct-portal-x9.com/verify to avoid interruption."
+);
+check(
+  "a message claiming a brand but linking elsewhere is flagged",
+  claimMismatch.reasons.some((r) => r.id === "brand_claim_mismatch"),
+  `fired: ${claimMismatch.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+const legitRedirect = await analyzeLocal(
+  "Team, we've moved our documents to Google Drive. You can sign in at https://intranet.example.com/login with your usual work account."
+);
+check(
+  "an ordinary mail naming a brand and linking internally is not flagged",
+  legitRedirect.verdict === VERDICT.SAFE &&
+    !legitRedirect.reasons.some((r) => r.id === "brand_claim_mismatch"),
+  `scored ${legitRedirect.score}, fired: ${legitRedirect.reasons.map((r) => r.id).join(", ") || "none"}`
 );
 
 /* ------------------------------- heuristics -------------------------------- */

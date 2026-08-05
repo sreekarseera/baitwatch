@@ -174,6 +174,53 @@
   // classic scripts under Manifest V3 and cannot use ES modules.
   const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 
+  // Field names, ids, labels and autocomplete hints that mean "one-time code".
+  // A `type="password"` box is unambiguous; OTP boxes are usually plain text
+  // inputs and have to be recognised by what they're called.
+  const OTP_HINT_RE =
+    /\b(otp|one[\s-]?time[\s-]?(?:code|password|pin)|passcode|mpin|txn[\s-]?pin|verification[\s-]?code|security[\s-]?code|auth(?:entication)?[\s-]?code|cvv)\b/;
+
+  /**
+   * Which kinds of credential the page is asking for.
+   *
+   * This is the gate on the whole impersonation check — a page that names a
+   * brand it doesn't own is only interesting if it also wants that brand's
+   * password or one-time code. Returns kinds, never values: nothing the user
+   * has typed is read, only the shape of the form.
+   */
+  function collectCredentialFields() {
+    const kinds = new Set();
+
+    for (const input of document.querySelectorAll("input")) {
+      const type = (input.type || "").toLowerCase();
+      if (type === "hidden") continue;
+
+      if (type === "password") {
+        kinds.add("password");
+        continue;
+      }
+
+      const hint = [
+        input.name,
+        input.id,
+        input.autocomplete,
+        input.placeholder,
+        input.getAttribute("aria-label"),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      if (input.autocomplete === "current-password" || input.autocomplete === "new-password") {
+        kinds.add("password");
+      } else if (OTP_HINT_RE.test(hint)) {
+        kinds.add("otp");
+      }
+    }
+
+    return [...kinds];
+  }
+
   function collectPage() {
     const text = (document.body?.innerText || "").replace(/\n{3,}/g, "\n\n").trim();
 
@@ -207,6 +254,8 @@
       text: text.slice(0, PAGE_TEXT_LIMIT),
       truncated: text.length > PAGE_TEXT_LIMIT,
       extraUrls: [...new Set([location.href, ...links, ...formTargets])],
+      formTargets: [...new Set(formTargets)],
+      credentialFields: collectCredentialFields(),
       title: document.title || "",
       emails,
       // Reported from here rather than read off the tab: `tab.url` requires

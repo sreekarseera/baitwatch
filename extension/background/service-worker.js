@@ -54,7 +54,7 @@ chrome.tabs.onRemoved.addListener((tabId) => flaggedPerTab.delete(tabId));
 /**
  * Analyze one message, applying the user's block/allow lists first.
  */
-async function runAnalysis({ text, sender = "", source = "manual", extraUrls = [] }, tabId) {
+async function runAnalysis({ text, sender = "", source = "manual", extraUrls = [], page = null }, tabId) {
   const settings = await getSettings();
   const normalizedSender = sender.trim().toLowerCase();
 
@@ -92,7 +92,7 @@ async function runAnalysis({ text, sender = "", source = "manual", extraUrls = [
   const cloud =
     settings.cloudTier && settings.apiKey ? createCloudAnalyzer(settings.apiKey) : null;
 
-  const result = await analyze(text, { sender: normalizedSender, source, cloud, extraUrls });
+  const result = await analyze(text, { sender: normalizedSender, source, cloud, extraUrls, page });
 
   await bumpStat("scanned");
   if (result.tier === "claude") await bumpStat("cloudCalls");

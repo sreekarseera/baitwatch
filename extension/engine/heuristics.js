@@ -8,18 +8,46 @@
 
 import { normalize } from "../lib/text.js";
 
+const CREDENTIAL_NOUN_RE =
+  /\b(?:password|passcode|pin(?:\s*(?:number|code))?|otp|one[\s-]?time\s*(?:password|code|pin)|cvv|card\s*(?:number|details)|security\s*code|seed\s*phrase|recovery\s*phrase|private\s*key|aadhaar|ssn|social\s*security)\b/;
+
+// The secret leaving your possession, *towards whoever is asking*. The
+// direction is the whole signal: "send OTP to your registered mobile" is a real
+// bank's own button and "send me your OTP" is a theft, and both contain "send".
+// So the verb has to carry an indirect object pointing back at the sender. Bare
+// verbs matched far too much — including the word "email" sitting on the login
+// form of every site in the world.
+const CREDENTIAL_TRANSMIT_RE =
+  /\b(?:(?:send|forward|give|tell|text|whatsapp|email|message)\s+(?:it\s+)?(?:me|us|back|to\s+(?:me|us))|share\s+(?:your|the|it|with)|reply\s+(?:with|back\s+with)|revert\s+with|provide\s+(?:me|us))\b/;
+
+// Verbs that describe typing a secret into a form. Damning in a message,
+// unremarkable on the login page it describes — see the rule below.
+const CREDENTIAL_ENTRY_RE = /\b(?:enter|provide|confirm|verify|submit|update)\b/;
+
 /**
  * Each rule is {id, weight, why, test}. `why` is written to be shown to a
  * non-technical user verbatim, so it explains the *risk*, not the regex.
+ *
+ * `test` receives the normalized text and a context object describing where the
+ * text came from — currently just whether the page carries a real credential
+ * field. Only `credential_request` reads it; the rest ignore the argument.
  */
 const RULES = [
   {
     id: "credential_request",
     weight: 2.2,
     why: "It asks for a password, PIN, OTP, or card number. No real bank, retailer, or IT team ever asks for these.",
-    test: (t) =>
-      /\b(?:password|passcode|pin(?:\s*(?:number|code))?|otp|one[\s-]?time\s*(?:password|code|pin)|cvv|card\s*(?:number|details)|security\s*code|seed\s*phrase|recovery\s*phrase|private\s*key|aadhaar|ssn|social\s*security)\b/.test(t) &&
-      /\b(?:send|share|enter|provide|confirm|verify|reply\s*with|give|submit|tell|forward|update)\b/.test(t),
+    test: (t, ctx) => {
+      if (!CREDENTIAL_NOUN_RE.test(t)) return false;
+      // On a page that has a real login form, "enter your password" is what
+      // every legitimate sign-in page in the world says. Judged as a message
+      // it reads as a credential request, which made the rule fire on the
+      // genuine bank and workplace logins the whole-page scan exists to check.
+      // There, only asking you to *transmit* the secret counts.
+      return ctx.hasCredentialForm
+        ? CREDENTIAL_TRANSMIT_RE.test(t)
+        : CREDENTIAL_TRANSMIT_RE.test(t) || CREDENTIAL_ENTRY_RE.test(t);
+    },
   },
   {
     id: "gift_card_payment",
@@ -160,15 +188,18 @@ const EXONERATING_RULES = [
 
 /**
  * @param {string} rawText
+ * @param {{hasCredentialForm?: boolean}} [context] What the text is. A page
+ *   carrying an actual login form is read differently from a message that
+ *   merely talks about one.
  * @returns {{score: number, signals: Array<{id, weight, detail}>, exonerating: Array}}
  */
-export function analyzeHeuristics(rawText) {
+export function analyzeHeuristics(rawText, context = {}) {
   const t = normalize(rawText);
   const signals = [];
   const exonerating = [];
 
   for (const rule of RULES) {
-    if (rule.test(t)) {
+    if (rule.test(t, context)) {
       signals.push({ id: rule.id, weight: rule.weight, detail: rule.why });
     }
   }

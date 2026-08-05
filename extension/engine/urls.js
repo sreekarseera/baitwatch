@@ -6,27 +6,33 @@
 import { extractUrls } from "../lib/text.js";
 import { PSL_RULES, PSL_WILDCARDS, PSL_EXCEPTIONS } from "./psl-data.js";
 
-// Brands impersonated often enough to be worth lookalike-checking. Each entry
-// is the legitimate registrable domain; anything that *looks* like the brand
-// but resolves elsewhere is the signal we care about.
-const PROTECTED_BRANDS = [
-  { name: "PayPal", domains: ["paypal.com"] },
-  { name: "Amazon", domains: ["amazon.com", "amazon.in", "amazon.co.uk"] },
-  { name: "Apple", domains: ["apple.com", "icloud.com"] },
-  { name: "Microsoft", domains: ["microsoft.com", "live.com", "outlook.com", "office.com"] },
-  { name: "Google", domains: ["google.com", "gmail.com", "youtube.com"] },
-  { name: "Netflix", domains: ["netflix.com"] },
-  { name: "Facebook", domains: ["facebook.com", "instagram.com", "whatsapp.com"] },
-  { name: "LinkedIn", domains: ["linkedin.com"] },
-  { name: "FedEx", domains: ["fedex.com"] },
-  { name: "DHL", domains: ["dhl.com"] },
-  { name: "Chase", domains: ["chase.com"] },
-  { name: "HDFC Bank", domains: ["hdfcbank.com"] },
-  { name: "ICICI Bank", domains: ["icicibank.com"] },
-  { name: "State Bank of India", domains: ["onlinesbi.sbi", "sbi.co.in"] },
-  { name: "Axis Bank", domains: ["axisbank.com"] },
-  { name: "NPCI / UPI", domains: ["npci.org.in"] },
-  { name: "Income Tax India", domains: ["incometax.gov.in"] },
+// Brands impersonated often enough to be worth checking for. `domains` lists
+// the legitimate registrable domains — anything that *looks* like the brand but
+// resolves elsewhere is the signal we care about.
+//
+// `aliases` are the names a page or message uses to present itself as the
+// brand, for the impersonation check in impersonation.js. They are deliberately
+// conservative: a generic word ("axis", "upi", "meta") matches ordinary writing
+// far too often to be evidence of anything, so those brands are listed only
+// under a qualified form.
+export const PROTECTED_BRANDS = [
+  { name: "PayPal", domains: ["paypal.com"], aliases: ["paypal", "pay pal"] },
+  { name: "Amazon", domains: ["amazon.com", "amazon.in", "amazon.co.uk"], aliases: ["amazon"] },
+  { name: "Apple", domains: ["apple.com", "icloud.com"], aliases: ["apple id", "icloud", "apple account"] },
+  { name: "Microsoft", domains: ["microsoft.com", "live.com", "outlook.com", "office.com"], aliases: ["microsoft", "outlook", "office 365", "onedrive"] },
+  { name: "Google", domains: ["google.com", "gmail.com", "youtube.com"], aliases: ["google account", "gmail", "google drive"] },
+  { name: "Netflix", domains: ["netflix.com"], aliases: ["netflix"] },
+  { name: "Facebook", domains: ["facebook.com", "instagram.com", "whatsapp.com"], aliases: ["facebook", "instagram", "whatsapp"] },
+  { name: "LinkedIn", domains: ["linkedin.com"], aliases: ["linkedin"] },
+  { name: "FedEx", domains: ["fedex.com"], aliases: ["fedex"] },
+  { name: "DHL", domains: ["dhl.com"], aliases: ["dhl"] },
+  { name: "Chase", domains: ["chase.com"], aliases: ["chase bank", "jpmorgan chase"] },
+  { name: "HDFC Bank", domains: ["hdfcbank.com"], aliases: ["hdfc", "hdfc bank", "netbanking hdfc"] },
+  { name: "ICICI Bank", domains: ["icicibank.com"], aliases: ["icici", "icici bank"] },
+  { name: "State Bank of India", domains: ["onlinesbi.sbi", "sbi.co.in"], aliases: ["state bank of india", "onlinesbi", "yono sbi", "sbi net banking"] },
+  { name: "Axis Bank", domains: ["axisbank.com"], aliases: ["axis bank"] },
+  { name: "NPCI / UPI", domains: ["npci.org.in"], aliases: ["npci", "bhim upi"] },
+  { name: "Income Tax India", domains: ["incometax.gov.in"], aliases: ["income tax department", "incometax.gov.in"] },
 ];
 
 const URL_SHORTENERS = new Set([
@@ -78,7 +84,7 @@ function publicSuffix(host) {
   return null;
 }
 
-function hostOf(rawUrl) {
+export function hostOf(rawUrl) {
   const withScheme = /^https?:\/\//i.test(rawUrl) ? rawUrl : `http://${rawUrl}`;
   try {
     return new URL(withScheme).hostname.toLowerCase().replace(/^www\./, "");
@@ -141,6 +147,11 @@ function skeleton(domain) {
     .replace(/[̀-ͯ]/g, "")
     .replace(/[аеорсхуіѕ]/g, (ch) => ({ а: "a", е: "e", о: "o", р: "p", с: "c", х: "x", у: "y", і: "i", ѕ: "s" }[ch]))
     .replace(/[01345]/g, (ch) => ({ "0": "o", "1": "l", "3": "e", "4": "a", "5": "s" }[ch]))
+    // "rn" renders almost identically to "m" at normal size — "arnazon.com"
+    // is a real and frequently-used registration. Folding it here rather than
+    // leaning on edit distance matters because it costs two edits, which puts
+    // it outside the tolerance short brand names are allowed.
+    .replace(/rn/g, "m")
     .replace(/[^a-z.-]/g, "");
 }
 
@@ -153,6 +164,16 @@ function lookalikeMatch(host) {
     for (const legit of brand.domains) {
       if (domain === legit || host === legit || host.endsWith(`.${legit}`)) return null; // genuine
       const legitLabel = skeleton(legit).split(".")[0];
+
+      // Folds to the brand's domain exactly, but isn't it: "paypa1.com",
+      // "рaypal.com" (Cyrillic р), "arnazon.com". This has to be checked
+      // before the edit-distance branch below, which compares the *folded*
+      // labels and therefore sees these as identical — meaning its
+      // `domainLabel !== legitLabel` guard skipped them and the most
+      // clear-cut impersonation of all fell through unflagged.
+      if (domainSkeleton === skeleton(legit)) {
+        return { brand: brand.name, legit, kind: "homoglyph" };
+      }
 
       // Same brand name, different registrable domain: "paypal.security-check.tk".
       if (domainSkeleton !== skeleton(legit) && host.split(".").slice(0, -2).some((sub) => skeleton(sub) === legitLabel)) {
@@ -205,6 +226,7 @@ export function analyzeUrls(text, extraUrls = []) {
     const lookalike = lookalikeMatch(host);
     if (lookalike) {
       const LOOKALIKE_DETAIL = {
+        homoglyph: `"${host}" is built from characters chosen to read as ${lookalike.brand}'s real domain (${lookalike.legit}) — it is a different site owned by someone else.`,
         typo: `"${host}" is one or two characters away from ${lookalike.brand}'s real domain (${lookalike.legit}).`,
         subdomain: `"${host}" puts ${lookalike.brand}'s name in a subdomain of an unrelated site — the real domain is ${lookalike.legit}.`,
         compound: `"${host}" bolts a reassuring word onto ${lookalike.brand}'s name. ${lookalike.brand} only uses ${lookalike.legit}.`,
@@ -213,6 +235,10 @@ export function analyzeUrls(text, extraUrls = []) {
         id: "lookalike_domain",
         weight: 3.0,
         detail: LOOKALIKE_DETAIL[lookalike.kind],
+        // Carried so the impersonation layer doesn't charge for the same
+        // brand twice — "this domain imitates PayPal" and "this page claims
+        // to be PayPal" are one finding, not two.
+        brand: lookalike.brand,
       });
     }
 

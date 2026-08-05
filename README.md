@@ -17,10 +17,10 @@ API key.
 │  ┌──────────────┐        ┌──────────────────────────────┐  │
 │  │ site adapter │──text─▶│  1. heuristics  (16 rules)   │  │
 │  │  Gmail       │        │  2. URL analysis             │  │
-│  │  WhatsApp    │◀verdict│  3. on-device classifier     │  │
-│  │  Telegram    │        └──────────────┬───────────────┘  │
-│  │  generic     │                       │ only if uncertain│
-│  └──────────────┘                       ▼                  │
+│  │  WhatsApp    │◀verdict│  3. brand impersonation      │  │
+│  │  Telegram    │        │  4. on-device classifier     │  │
+│  │  generic     │        └──────────────┬───────────────┘  │
+│  └──────────────┘                       │ only if uncertain│
 └─────────────────────────────────────────┼──────────────────┘
                                           │ your API key
                                    Claude (optional, off by default)
@@ -51,7 +51,7 @@ API key.
 
 ## How detection works
 
-Three layers, deliberately **not** averaged together.
+Four layers, deliberately **not** averaged together.
 
 **1. Heuristics** — 16 rules for the social-engineering tactics that stay
 constant across rewrites and languages: OTP and password requests, gift-card
@@ -65,7 +65,7 @@ message that triggered something severe — "as discussed, send me your OTP"
 gets no discount.
 
 **2. URL analysis** — lookalike domains via edit distance plus homoglyph and
-leetspeak folding (`paypa1.com`, `рaypal.com`, `paypal-secure.com`,
+leetspeak folding (`paypa1.com`, `arnazon.com`, `paypal-secure.com`,
 `amazon.com.delivery.tk`), link shorteners, high-abuse TLDs, raw-IP hosts,
 punycode, and the `https://apple.com@evil.tk` username trick.
 
@@ -76,15 +76,37 @@ domains. Free hosting is where a large share of phishing pages actually live,
 and any shorter list collapses every page on a platform — hostile and
 legitimate alike — into one.
 
-**3. On-device classifier** — the TF-IDF + logistic regression model from V1,
+**3. Brand impersonation** — the URL layer asks whether the *domain* imitates a
+brand. This asks the other half: does the page claim to *be* one? A credential
+harvest usually doesn't bother with a clever domain. It sits on
+`secure-portal-9f2.xyz`, puts a bank's name in the title, and shows a password
+box. Nothing about that domain is suspicious in isolation; the mismatch between
+what the page says it is and where it is served from is the entire signal.
+
+The rule is conjunctive on purpose, because the failure mode here is warning
+about ordinary browsing. A brand name in a title proves nothing — news and
+review sites print them all day. So the page must *present itself* as the brand
+(name in the title, or wired directly to its sign-in prompt), be served from a
+domain the brand doesn't own, be thin enough to be a login page rather than an
+article, and ask for a password or one-time code. "Sign in with Google" on a
+site that isn't Google is explicitly not a claim to be Google.
+
+**4. On-device classifier** — the TF-IDF + logistic regression model from V1,
 exported to JSON and re-implemented in ~40 lines of JavaScript. No WebAssembly
 (Manifest V3's CSP makes that a fight), no multi-megabyte runtime, no fetch:
 90 KB of weights shipped in the package.
 
 The rule layers can convict on their own — a gift-card request is a scam
 regardless of what a bag-of-words model thinks. The classifier only nudges
-borderline cases, contributing at most ~22 of the 100 points. Averaging the
-three would let a confident-but-wrong model bury the signal the user needed.
+borderline cases, contributing at most ~22 of the 100 points. Averaging them
+would let a confident-but-wrong model bury the signal the user needed.
+
+Rules also read their context. "Enter your password" is a credential request in
+a message and the most ordinary sentence in the world on the login page it
+describes, so on a page carrying a real login form only asking you to *hand the
+secret over* — "send me your OTP" — counts. Without that distinction the scan
+flagged genuine bank and workplace logins as dangerous, which is precisely the
+page it was built to be used on.
 
 ## Install
 
@@ -130,7 +152,7 @@ Current model: 96.4% validation accuracy, 1,970 terms, 90 KB.
 ## Tests
 
 ```bash
-python3 tests/run_all.py                 # all three layers
+python3 tests/run_all.py                 # engine, model parity, browser
 python3 tests/run_all.py --no-browser    # skip Chrome
 ```
 
@@ -142,7 +164,7 @@ line**, so the browser layer needs Chrome for Testing.
 
 ```
 extension/
-  engine/      heuristics, URL analysis, model inference, Claude tier
+  engine/      heuristics, URL analysis, impersonation, model inference, Claude tier
   content/     site adapters, DOM scanner, in-page warning UI
   background/  service worker — the only place analysis runs
   popup/       manual check, history, sender lists
@@ -174,6 +196,12 @@ Regenerate it with `python3 tools/build_psl.py`.
   heuristic and URL layers, not the classifier, are what the verdict mostly
   rests on. Broadening the dataset with real-world scam corpora is the single
   highest-value improvement available.
+- **Non-Latin lookalike domains are caught, but not named.** `paypa1.com` and
+  `arnazon.com` fold onto the brand they imitate and are reported as such. A
+  Cyrillic `рaypal.com` arrives already punycode-encoded (`xn--aypal-8gg.com`),
+  which no amount of character folding maps back to "paypal", so it is caught
+  by the weaker punycode rule and the warning can't name the brand. Decoding
+  punycode before folding is what would close this.
 - **Adapters are selector-based.** Gmail and WhatsApp change their DOM without
   notice; if auto-scan goes quiet on a site, the selectors in
   `extension/content/adapters.js` are the first place to look.
@@ -183,9 +211,9 @@ Regenerate it with `python3 tools/build_psl.py`.
 | | V1 | V2 |
 |---|---|---|
 | Backend | FastAPI on localhost:8000 | none — all in-browser |
-| Detection | one model | heuristics + URL analysis + model, fused |
+| Detection | one model | heuristics + URL analysis + brand impersonation + model, fused |
 | Input | manual paste | auto-scan with per-site adapters, plus paste and right-click |
 | Output | label + confidence | verdict, score, and reasons in plain language |
 | Warning | banner for blocked emails | in-page card with reasons and actions, shadow-DOM isolated |
 | Sender lists | blocklist | blocklist + allowlist |
-| Tests | 17 e2e checks against the backend | 61 engine checks, model parity, 15 browser checks |
+| Tests | 17 e2e checks against the backend | 96 engine checks, model parity, 15 browser checks |

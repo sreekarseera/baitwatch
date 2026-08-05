@@ -9,6 +9,7 @@
 
 import { analyzeHeuristics } from "./heuristics.js";
 import { analyzeUrls } from "./urls.js";
+import { analyzeImpersonation } from "./impersonation.js";
 import { classify } from "./model.js";
 
 export const VERDICT = {
@@ -36,13 +37,25 @@ function squash(rawScore) {
 /**
  * Run the local (free, offline, private) layers.
  * @param {string} text
- * @param {{extraUrls?: string[]}} [opts] `extraUrls` carries link targets and
- *   the page address during a whole-page scan — see analyzeUrls.
+ * @param {{extraUrls?: string[], page?: object}} [opts] `extraUrls` carries link
+ *   targets and the page address during a whole-page scan — see analyzeUrls.
+ *   `page` carries the page's own address, title, form targets, and which kinds
+ *   of credential field it contains — see analyzeImpersonation.
  * @returns {Promise<object>} verdict object
  */
 export async function analyzeLocal(text, opts = {}) {
-  const heuristics = analyzeHeuristics(text);
+  const heuristics = analyzeHeuristics(text, {
+    hasCredentialForm: (opts.page?.credentialFields || []).length > 0,
+  });
   const urls = analyzeUrls(text, opts.extraUrls || []);
+
+  // Runs after the URL layer so it can see which brands were already flagged
+  // there: a lookalike domain and an impersonated page are one finding.
+  const impersonation = analyzeImpersonation(text, {
+    page: opts.page,
+    urls: urls.urls,
+    urlBrands: new Set(urls.signals.map((s) => s.brand).filter(Boolean)),
+  });
 
   let model = { probability: 0.5, matchedTerms: [], available: false };
   try {
@@ -53,7 +66,7 @@ export async function analyzeLocal(text, opts = {}) {
     console.warn("[BaitWatch] on-device model unavailable:", err);
   }
 
-  const ruleScore = squash(heuristics.score + urls.score);
+  const ruleScore = squash(heuristics.score + urls.score + impersonation.score);
 
   // The model contributes at most ~22 points, and only in the direction it is
   // confident about. It cannot by itself push a message over DANGEROUS.
@@ -64,7 +77,7 @@ export async function analyzeLocal(text, opts = {}) {
   const verdict =
     score >= DANGEROUS_AT ? VERDICT.DANGEROUS : score >= SUSPICIOUS_AT ? VERDICT.SUSPICIOUS : VERDICT.SAFE;
 
-  const reasons = [...heuristics.signals, ...urls.signals]
+  const reasons = [...heuristics.signals, ...urls.signals, ...impersonation.signals]
     .sort((a, b) => b.weight - a.weight)
     .map((s) => ({ id: s.id, detail: s.detail }));
 
@@ -103,7 +116,7 @@ export function shouldEscalate(local) {
  * @param {{sender?: string, source?: string, cloud?: (text, local) => Promise<object|null>}} opts
  */
 export async function analyze(text, opts = {}) {
-  const local = await analyzeLocal(text, { extraUrls: opts.extraUrls });
+  const local = await analyzeLocal(text, { extraUrls: opts.extraUrls, page: opts.page });
   local.sender = opts.sender || "";
   local.source = opts.source || "manual";
 
