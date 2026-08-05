@@ -94,7 +94,12 @@ const corpus = load("dataset.csv");
 // commercial advertising, and a marketing email is not what BaitWatch promises
 // to catch. Blending them produces one meaningless number: a miss rate of 74%
 // that is almost entirely "did not warn about a newsletter".
-const curatedScams = load("curated.csv").filter((r) => r.scam);
+const curatedScams = [...load("curated.csv"), ...load("curated-hinglish.csv")].filter((r) => r.scam);
+
+// Roman-script Hindi is how most Indian scam messages are actually written, and
+// Devanagari is graded separately from it because the two fail differently: the
+// rules cover both, but the model layer is blind to Hindi script entirely.
+const DEVANAGARI = /[\u0900-\u097F]/;
 
 /* --------------------------------- measure --------------------------------- */
 
@@ -127,6 +132,28 @@ for (const row of curatedScams) {
 }
 const curatedMissRate = curatedMissed.length / curatedScams.length;
 
+const indic = [...load("curated-hinglish.csv")];
+const indicScams = indic.filter((r) => r.scam);
+let indicMissed = 0;
+let indicFalseAlarms = 0;
+const byScript = {
+  roman: { total: 0, missed: 0 },
+  devanagari: { total: 0, missed: 0 },
+};
+for (const row of indic) {
+  const result = await analyzeLocal(row.text);
+  const flagged = result.verdict !== VERDICT.SAFE;
+  if (row.scam) {
+    const bucket = byScript[DEVANAGARI.test(row.text) ? "devanagari" : "roman"];
+    bucket.total += 1;
+    if (!flagged) {
+      indicMissed += 1;
+      bucket.missed += 1;
+    }
+  } else if (flagged) indicFalseAlarms += 1;
+}
+const indicMissRate = indicMissed / indicScams.length;
+
 // Legitimate mail called *dangerous* is the worst outcome the extension has:
 // suspicious is a note the user can dismiss, dangerous is a red card over
 // something real.
@@ -140,6 +167,14 @@ console.log(
   `\n  Targeted scams missed  ${curatedMissed.length}/${curatedScams.length}  (${(curatedMissRate * 100).toFixed(2)}%)`
 );
 console.log("    (curated rows only — the tactics this tool is built for)");
+console.log(
+  `\n  Hinglish/Hindi scams missed  ${indicMissed}/${indicScams.length}  (${(indicMissRate * 100).toFixed(2)}%)`
+);
+console.log(
+  `    roman script  ${byScript.roman.missed}/${byScript.roman.total}` +
+    `    devanagari  ${byScript.devanagari.missed}/${byScript.devanagari.total}`
+);
+console.log(`    false alarms on ordinary Hinglish  ${indicFalseAlarms}/${indic.length - indicScams.length}`);
 
 if (verbose) {
   console.log("\nWorst false positives:");
@@ -169,6 +204,11 @@ const GATES = [
   // different one-off — a payroll-redirect, a pre-approved-loan fee, a traffic
   // fine "settlement" — rather than another cluster worth a rule.
   ["targeted scams missed", curatedMissRate, 0.08],
+  // Was 74% before the rules learned any Hindi at all. Gated separately
+  // because a blended number hides it: 35 Hinglish rows against 140 English
+  // ones can go entirely wrong while the combined figure barely moves.
+  ["Hinglish/Hindi scams missed", indicMissRate, 0.20],
+  ["false alarms on ordinary Hinglish", indicFalseAlarms / (indic.length - indicScams.length), 0.05],
 ];
 
 let failed = 0;

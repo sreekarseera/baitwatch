@@ -40,6 +40,11 @@ const MODEL_MAX_PULL = 50;
 // properly and are what should decide there.
 const MODEL_MAX_PULL_PAGE = 22;
 
+// Vocabulary terms a message must hit before the model's opinion counts at all.
+// Three is low on purpose: it is meant to catch text the model genuinely cannot
+// read — Hindi script, mostly — not to second-guess short messages.
+const MIN_KNOWN_TERMS = 3;
+
 function squash(rawScore) {
   // Map an unbounded positive weight sum onto 0–100 with diminishing returns,
   // so a message with eight weak signals can't outrank one with a single
@@ -70,9 +75,14 @@ export async function analyzeLocal(text, opts = {}) {
     urlBrands: new Set(urls.signals.map((s) => s.brand).filter(Boolean)),
   });
 
-  let model = { probability: 0.5, matchedTerms: [], available: false };
+  // MIN_KNOWN_TERMS: below this the model has not read enough of the message to
+  // have an opinion, and its probability is really just the intercept. Letting
+  // it vote anyway is not neutral — the intercept sits slightly below 0.5, so
+  // it subtracts points from text it cannot parse.
+  let model = { probability: 0.5, matchedTerms: [], knownTerms: 0, available: false };
   try {
-    model = { ...(await classify(text)), available: true };
+    const classified = await classify(text);
+    model = { ...classified, available: classified.knownTerms >= MIN_KNOWN_TERMS };
   } catch (err) {
     // A missing/corrupt model artifact must not take the whole extension
     // down — the rule layers are the ones that carry the explanations.

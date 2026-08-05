@@ -54,7 +54,7 @@ API key.
 Four layers, deliberately **not** averaged together.
 
 **1. Heuristics** — 21 rules for the social-engineering tactics that stay
-constant across rewrites and languages: OTP and password requests, gift-card
+constant across rewrites: OTP and password requests, gift-card
 payment, UPI collect-requests, crypto transfers, invoice redirection, boss
 impersonation, arrest threats, secrecy demands, remote-access installs,
 family-emergency impersonation, failed-delivery fees, advance-fee job offers,
@@ -68,6 +68,26 @@ Each is conjunctive, and the near-misses are the reason. "Hi mum, this is my
 new number" is a real message people really send; so is "bro, send me the
 wedding photos". Only a claimed relationship *and* a request for money *and*
 either an unverifiable number or a sudden crisis is the tactic.
+
+**The rules read Hinglish and Devanagari, not only English.** UPI
+collect-requests, KYC expiry and digital-arrest threats are Indian tactics, but
+matching them in English alone missed 64% of the same scams written in
+Roman-script Hindi and **100%** written in Devanagari. Both are now covered
+(8.6% missed, no new false positives on ordinary Hinglish).
+
+This works because heuristics run regexes over normalized text and never
+tokenize — which matters, because the tokenizer *cannot see Devanagari at all*.
+Two things had to be fixed alongside the vocabulary:
+
+- The exonerating rule "doesn't ask you to click, pay, or hand over anything"
+  tested for the **absence** of English verbs, so it fired on every non-English
+  message and handed a discount to precisely the scams the rules were added to
+  catch. An absence-based rule has to know every language the presence-based
+  ones do, or it quietly inverts.
+- The classifier returned a probability just under 0.5 for Hindi it could not
+  read, which *subtracted* points. It now abstains below a minimum number of
+  recognised terms — "confidently benign" and "I cannot read this" look
+  identical in a probability, and only one deserves a vote.
 
 There are also three *exonerating* rules that push ordinary mail back down.
 Without them, any email containing "urgent" gets flagged, and an extension that
@@ -121,7 +141,7 @@ JSON and re-implemented in ~40 lines of JavaScript. No WebAssembly (Manifest
 V3's CSP makes that a fight), no multi-megabyte runtime, no fetch: 262 KB of
 weights shipped in the package.
 
-It is trained on 3,192 messages — 280 curated rows plus the SpamAssassin public
+It is trained on 3,248 messages — 336 curated rows plus the SpamAssassin public
 corpus, rebuilt by `training/build_corpus.py`. The corpus matters more than the
 row count suggests. Its `hard_ham` folder is mail that *looks* like spam —
 newsletters, offers, marketing from real senders — which is the most useful
@@ -198,7 +218,7 @@ extension keeps producing confident, wrong answers with nothing at runtime to
 catch it. The test runs the whole dataset plus adversarial unicode through both
 implementations and fails on any disagreement.
 
-Current model: 95.9% validation accuracy, 95.5% ±1.2% five-fold CV,
+Current model: 95.9% validation accuracy, 94.8% ±1.7% five-fold CV,
 6,000 terms, 262 KB.
 
 ## Tests
@@ -212,8 +232,10 @@ node tests/test_benchmark.mjs --verbose  # what it gets wrong, and how badly
 `test_engine.mjs` asks whether specific cases behave correctly.
 `test_benchmark.mjs` asks how often the extension is wrong, across the whole
 corpus, through the real fused engine rather than the classifier alone — and
-fails the build if the rates regress. Currently **0.55% of legitimate mail is
-flagged**, 0.25% of it as dangerous, and 3.6% of targeted scams are missed.
+fails the build if the rates regress. Currently **0.73% of legitimate mail is
+flagged**, 0.18% of it as dangerous, 4.0% of targeted scams are missed, and
+5.7% of Hinglish/Hindi scams — gated separately, because 35 Indic rows against
+140 English ones can go entirely wrong while a blended number barely moves.
 
 Those gates are what make "reduce false positives" an actionable goal rather
 than a feeling. Note that the corpus rows are also training rows, so the
@@ -234,7 +256,7 @@ extension/
   popup/       manual check, history, sender lists
   options/     settings, API key, model info
   lib/         storage, text utilities, punycode, CSV export
-training/      corpus builder, dataset, trainer, JSON exporter, icons
+training/      corpus builder, datasets, trainer, JSON exporter, icons
 tools/         build script for the public suffix list
 tests/         parity, engine, accuracy benchmark, browser smoke
 ```
@@ -265,10 +287,15 @@ Regenerate it with `python3 tools/build_psl.py`.
   no longer share a shape — a payroll-redirect, a pre-approved-loan fee, a
   traffic-fine "settlement". Each would need its own rule for one row of
   benefit, which is how a rule set starts overfitting its own test set.
-- **Every rule is English-only.** The heuristics encode UPI collect-requests
-  and digital-arrest threats, which are India-specific tactics, but match only
-  English wording. A Hinglish or Devanagari version of the same scam trips
-  nothing. This is the largest remaining gap.
+- **The model is blind to Devanagari.** The rules cover it, but scikit-learn's
+  default tokenizer — which the extension mirrors exactly — splits words at
+  Unicode Marks, and Devanagari vowel signs are Marks. "खाता" tokenizes to
+  nothing. Parity passes because Python and JavaScript are wrong identically.
+  Fixing it means changing the token pattern on both sides in lockstep and
+  retraining, so Hindi-script messages currently rest on the rule layer alone.
+- **Transliteration has no fixed spelling.** "bhejiye", "bhejo" and "bhej do"
+  are one word, and the rules match a stem list rather than anything
+  exhaustive. Spellings nobody thought of will be missed.
 - **Homoglyph folding is a hand-picked table, not the full confusables set.**
   The Cyrillic and Greek letters with exact Latin twins are covered, which is
   where the abuse concentrates, but Unicode defines thousands more. Importing
@@ -287,4 +314,4 @@ Regenerate it with `python3 tools/build_psl.py`.
 | Output | label + confidence | verdict, score, and reasons in plain language |
 | Warning | banner for blocked emails | in-page card with reasons and actions, shadow-DOM isolated |
 | Sender lists | blocklist | blocklist + allowlist |
-| Tests | 17 e2e checks against the backend | 146 engine checks, model parity, measured accuracy gates, 15 browser checks |
+| Tests | 17 e2e checks against the backend | 164 engine checks, model parity, measured accuracy gates, 15 browser checks |

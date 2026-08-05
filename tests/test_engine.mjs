@@ -673,6 +673,75 @@ for (const message of [
   );
 }
 
+/* --------------------------- hinglish and devanagari ----------------------- */
+// The tactics these rules encode are largely Indian, but every pattern matched
+// English wording only, so the same scam in Hinglish tripped nothing at all.
+// Measured before: 64% of Hinglish scams missed and 100% of Devanagari ones,
+// against 3.6% for English.
+
+for (const [name, message] of [
+  ["OTP request", "Sir aapka bank account block ho gaya hai, turant OTP bhejiye verification ke liye."],
+  ["UPI collect", "Maine aapko paise bheje hain. Request accept karke apna UPI PIN daaliye."],
+  ["digital arrest", "Ye Mumbai cyber cell se hai. Aapke naam par parcel mila hai. Turant call kijiye."],
+  ["KYC expiry", "Aapka KYC expire ho gaya hai. Turant update kijiye warna account band ho jayega."],
+  ["family emergency", "Papa main hoon, mera phone kho gaya hai. Is naye number par urgent paise bhej do."],
+  ["job advance fee", "Ghar baithe kaam kariye, roz 2000 rupaye kamaiye. Registration ke liye 500 bhejiye."],
+  ["devanagari OTP", "आपका खाता ब्लॉक हो गया है। तुरंत ओटीपी भेजिए वरना खाता बंद हो जाएगा।"],
+  ["devanagari arrest", "साइबर सेल से बोल रहे हैं। आपके नाम पर वारंट है। अभी पैसे ट्रांसफर कीजिए।"],
+  ["devanagari lottery", "बधाई हो! आपने 25 लाख की लॉटरी जीती है। प्रोसेसिंग फीस भेजकर दावा करें।"],
+]) {
+  const result = await analyzeLocal(message);
+  check(
+    `hinglish/hindi scam is flagged (${name})`,
+    result.verdict !== VERDICT.SAFE,
+    `scored ${result.score}, fired: ${result.reasons.map((r) => r.id).join(", ") || "none"}`
+  );
+}
+
+for (const [name, message] of [
+  ["meeting", "Kal meeting hai 10 baje office me. Please time par aa jaiye."],
+  ["family", "Papa main ghar aa raha hoon, khana ready rakhna. 8 baje tak pahunch jaunga."],
+  ["photos", "Bhai wedding ki photos bhej do jo tumne kheenchi thi."],
+  ["real bill", "Aapka electricity bill 1240 rupaye ka generate hua hai. Due date 15 tarikh hai."],
+  ["devanagari meeting", "कल मीटिंग सुबह दस बजे है। कृपया समय पर पहुँचें।"],
+  ["devanagari salary", "वेतन खाते में आ गया है, कृपया जाँच लें।"],
+]) {
+  const result = await analyzeLocal(message);
+  check(
+    `ordinary hinglish/hindi stays clean (${name})`,
+    result.verdict === VERDICT.SAFE,
+    `scored ${result.score}, fired: ${result.reasons.map((r) => r.id).join(", ") || "none"}`
+  );
+}
+
+// An exonerating rule that tests for the *absence* of English verbs fires on
+// every message not written in English, handing a discount to exactly the
+// scams the rules above exist to catch.
+const hindiAction = analyzeHeuristics("आपका खाता ब्लॉक हो गया है। तुरंत ओटीपी भेजिए।");
+check(
+  "no_action_requested does not exonerate a hindi message that demands action",
+  !hindiAction.exonerating.some((s) => s.id === "no_action_requested"),
+  `exonerating: ${hindiAction.exonerating.map((s) => s.id).join(", ") || "none"}`
+);
+
+// The tokenizer cannot see Devanagari — its vowel signs are Unicode Marks,
+// which \w excludes — so a Hindi message yields almost no known terms and a
+// probability just under 0.5. Letting that vote *subtracts* points from text
+// the model simply cannot read.
+const hindiModel = await analyzeLocal("आपका खाता ब्लॉक हो गया है। तुरंत ओटीपी भेजिए।");
+check(
+  "the model abstains on text it cannot tokenize",
+  hindiModel.model.available === false,
+  `available=${hindiModel.model.available}, p=${hindiModel.model.probability}`
+);
+
+const englishModel = await analyzeLocal("Please confirm the meeting time for tomorrow afternoon.");
+check(
+  "the model still votes on ordinary english",
+  englishModel.model.available === true,
+  `available=${englishModel.model.available}`
+);
+
 /* -------------------------------- escalation ------------------------------- */
 
 const obvious = await analyzeLocal(SCAMS[0][1]);

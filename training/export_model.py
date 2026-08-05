@@ -22,11 +22,26 @@ MODEL_PATH = "model/model.joblib"
 METRICS_PATH = "model/metrics.json"
 OUT_PATH = "../extension/engine/model-weights.json"
 
-# Terms whose coefficient is this close to zero contribute nothing a user
-# would notice, but they dominate the file size. Dropping them shrinks the
-# shipped artifact substantially with no measurable effect on predictions;
-# test_parity.py enforces that "no measurable effect" claim.
-COEF_EPSILON = 1e-4
+# Pruning by coefficient is UNSOUND and is deliberately disabled.
+#
+# The reasoning behind it — "a term with a near-zero coefficient contributes
+# nothing to the decision, so it can be dropped" — is true of the dot product
+# and false of the vector, because TfidfVectorizer L2-normalizes. Every term
+# present in a document, whatever its coefficient, is part of the norm that
+# divides all the others. Removing one from the JS vocabulary changes the
+# denominator, so *every* feature value shifts and the two implementations
+# quietly disagree.
+#
+# This sat latent until the vocabulary grew enough for two terms ("function",
+# "following") to fall under the threshold. A document containing "following"
+# then scored 0.1217 in Python and 0.1214 in JS. Small, but it is the exact
+# class of silent divergence the parity test exists to catch, and it would
+# have grown with the vocabulary.
+#
+# Size is controlled at training time by max_features instead, which is the
+# right place: sklearn then normalizes over the same vocabulary the extension
+# ships. Set this above zero only with a matching fix to the norm.
+COEF_EPSILON = 0.0
 
 
 def main() -> None:

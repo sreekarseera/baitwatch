@@ -24,6 +24,10 @@ Two things it fixes beyond raw volume:
 The curated rows are kept, not replaced. They carry the India-specific scams
 (UPI collect-requests, digital-arrest threats, KYC expiry) that a 2002 American
 corpus has never heard of, and those are the ones this project exists for.
+curated-hinglish.csv adds the same tactics in Roman-script Hindi and
+Devanagari. Note that the Devanagari rows do almost nothing for the model —
+the tokenizer cannot see Hindi script (see extension/lib/text.js) — they are
+here for the rule layer and the benchmark.
 
 Messages are redacted before they are written: headers are dropped entirely,
 and any address surviving in a body is replaced. The output goes into a public
@@ -55,7 +59,7 @@ ARCHIVES = {
 }
 
 HERE = pathlib.Path(__file__).resolve().parent
-CURATED = HERE / "curated.csv"
+CURATED = [HERE / "curated.csv", HERE / "curated-hinglish.csv"]
 OUT = HERE / "dataset.csv"
 
 # How many to take from each folder. easy_ham is capped rather than taken whole:
@@ -173,16 +177,20 @@ def main() -> None:
     print(f"corpus cache: {cache}")
     fetch(cache)
 
-    if not CURATED.exists():
-        sys.exit(f"missing {CURATED} — the curated rows are not regenerable, restore them first")
+    for path in CURATED:
+        if not path.exists():
+            sys.exit(f"missing {path} — the curated rows are not regenerable, restore them first")
 
     rng = random.Random(20260805)  # fixed: the dataset must rebuild identically
     rows = []
 
-    with CURATED.open(encoding="utf-8") as f:
-        curated = [(r["text"], int(r["label"])) for r in csv.DictReader(f)]
+    curated = []
+    for path in CURATED:
+        with path.open(encoding="utf-8") as f:
+            rows_in = [(r["text"], int(r["label"])) for r in csv.DictReader(f)]
+        curated.extend(rows_in)
+        print(f"  {path.stem:22} {len(rows_in)}")
     rows.extend(curated)
-    print(f"  curated:  {len(curated)}")
 
     for folder, quota in QUOTAS.items():
         label = 0 if "ham" in folder else 1

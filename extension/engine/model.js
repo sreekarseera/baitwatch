@@ -83,6 +83,14 @@ export async function classify(text) {
   return {
     probability: sigmoid(z),
     matchedTerms: contributions.slice(0, 5),
+    // How many vocabulary terms the document actually hit. The caller needs
+    // this to tell "confidently benign" from "I have no idea what this says":
+    // both come back as a probability near the intercept, but only one of them
+    // deserves a vote. Devanagari is the case that forced it — the tokenizer
+    // cannot see Hindi script at all, so a Hindi scam yields almost no known
+    // terms, a probability just under 0.5, and a *negative* pull that pushed
+    // real scams back below the warning threshold.
+    knownTerms: vector.size,
   };
 }
 
