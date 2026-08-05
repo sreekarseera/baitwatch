@@ -569,6 +569,110 @@ check(
   "a 'as discussed' preamble must not discount a credential request"
 );
 
+/* --------------------------- tactic-specific rules ------------------------- */
+// Five tactics the accuracy benchmark showed had no rule at all. Each is
+// conjunctive, so each gets its near-miss: the ordinary message that shares
+// most of the vocabulary and must stay clean. "Hi mum, this is my new number"
+// is a real thing people send.
+
+const TACTICS = [
+  {
+    rule: "family_emergency",
+    caught: [
+      "Hi dad, I broke my screen so I'm texting from a friend's phone. Can you transfer money now?",
+      "Hi sis, using a temp number. My salary is delayed and rent is due tonight, transfer 8000 please.",
+      "Beta, this is uncle. Your cousin met with an accident, we need money for the operation right away.",
+    ],
+    clean: [
+      "Hi mum, this is my new number, save it. Call me when you're free.",
+      "Hey bro, can you send me the photos from the wedding?",
+      "Dad, I lost my wallet at the station. Cancelling the cards now, will call you tonight.",
+    ],
+  },
+  {
+    rule: "delivery_redispatch_fee",
+    caught: [
+      "Bluedart: delivery attempt failed. Reschedule and pay re-dispatch charges here.",
+      "Amazon: Your package cannot be delivered. Reschedule here.",
+      "FedEx notice: address verification required for your shipment. Confirm and pay the handling fee.",
+    ],
+    clean: [
+      "Your package has been delivered and left with the security desk.",
+      "Your order has shipped. Track your parcel with the courier using this reference.",
+      "Delivery scheduled for Tuesday between 9am and 12pm. Reply RESCHEDULE to change it.",
+    ],
+  },
+  {
+    rule: "job_advance_fee",
+    caught: [
+      "You are shortlisted for a data entry job with weekly salary. Deposit a refundable security amount of 1500 to begin.",
+      "Work from home packing job, materials shipped to your address after a small courier deposit.",
+      "Earn from YouTube likes! Get paid per video. Join by paying a one time membership of 2500.",
+    ],
+    clean: [
+      "We'd like to invite you to a second interview for the data entry role on Tuesday. No preparation needed.",
+      "Your salary for March has been credited to your account.",
+      "Thanks for applying. We're moving forward with other candidates for this part-time role.",
+    ],
+  },
+  {
+    rule: "refund_callback",
+    caught: [
+      "Norton antivirus: your subscription auto-renewed for $349. To cancel and refund, call our helpline immediately.",
+      "Your order of 42,000 was charged today. If this transaction was not authorized, dial our toll-free number.",
+    ],
+    clean: [
+      "Your subscription renews on 12 March. Manage it any time in your account settings.",
+      "Here is your invoice for last month. Reply to this email if anything looks wrong.",
+    ],
+  },
+  {
+    rule: "windfall_solicitation",
+    caught: [
+      "I am an army officer deployed abroad and need a trusted partner to receive 10 million dollars.",
+      "I am a widow with terminal illness wishing to donate my late husband's fortune to you.",
+    ],
+    clean: [
+      "The fund returned 8% last year. Your statement is attached.",
+      "Our late founder's estate has funded three scholarships; applications open in June.",
+    ],
+  },
+];
+
+for (const { rule, caught, clean } of TACTICS) {
+  for (const message of caught) {
+    const result = analyzeHeuristics(message);
+    check(
+      `${rule} fires: ${message.slice(0, 44)}…`,
+      result.signals.some((s) => s.id === rule),
+      `fired: ${result.signals.map((s) => s.id).join(", ") || "nothing"}`
+    );
+  }
+  for (const message of clean) {
+    const result = analyzeHeuristics(message);
+    check(
+      `${rule} stays quiet: ${message.slice(0, 44)}…`,
+      !result.signals.some((s) => s.id === rule),
+      `fired: ${result.signals.map((s) => s.id).join(", ") || "nothing"}`
+    );
+  }
+}
+
+// The rules exist to move a verdict, not just to match. These are the messages
+// that scored 10-33 before they existed.
+for (const message of [
+  "Hi dad, I broke my screen so I'm texting from a friend's phone. Can you transfer money now?",
+  "Bluedart: delivery attempt failed. Reschedule and pay re-dispatch charges here.",
+  "You are shortlisted for a data entry job with weekly salary. Deposit a refundable security amount of 1500.",
+]) {
+  const result = await analyzeLocal(message);
+  check(
+    `now flagged end to end: ${message.slice(0, 40)}…`,
+    result.verdict !== VERDICT.SAFE,
+    `scored ${result.score}`
+  );
+}
+
 /* -------------------------------- escalation ------------------------------- */
 
 const obvious = await analyzeLocal(SCAMS[0][1]);

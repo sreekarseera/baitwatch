@@ -159,17 +159,16 @@ if (verbose) {
 // limit on it would be a limit on being wrong in the right direction. It is
 // printed, not enforced.
 const GATES = [
-  ["false positive rate", falsePositiveRate, 0.04],
-  ["legitimate mail called dangerous", dangerousOnLegit / legit, 0.01],
-  // Currently 15.7%, down from 27.1% before the corpus retrain. The gate sits
-  // above that as a regression alarm, not a target — the remaining misses are
-  // whole tactics with no rule yet rather than tuning, and they cluster:
-  // family-emergency impersonation ("Hi dad, I broke my screen, transfer to
-  // this UPI"), failed-delivery redispatch fees, advance-fee job offers,
-  // refund/callback scams, and 419-style inheritance letters. All of them
-  // score 23-33 against a threshold of 35, with the model already confident.
-  // Rules for those are the next thing that moves this number.
-  ["targeted scams missed", curatedMissRate, 0.20],
+  // Tightened from 4%/1% once the measurement settled at 0.49%/0.25%. A gate
+  // eight times looser than reality is not a gate: it leaves room for a new
+  // rule to spend a large amount of accuracy quietly and still pass.
+  ["false positive rate", falsePositiveRate, 0.015],
+  ["legitimate mail called dangerous", dangerousOnLegit / legit, 0.006],
+  // 27.1% before the corpus retrain, 15.7% after it, 3.6% once the five
+  // missing tactics got rules. What remains is five messages that are each a
+  // different one-off — a payroll-redirect, a pre-approved-loan fee, a traffic
+  // fine "settlement" — rather than another cluster worth a rule.
+  ["targeted scams missed", curatedMissRate, 0.08],
 ];
 
 let failed = 0;
@@ -177,7 +176,7 @@ console.log("");
 for (const [name, actual, limit] of GATES) {
   const ok = actual <= limit;
   if (!ok) failed += 1;
-  console.log(`  ${ok ? "PASS" : "FAIL"}  ${name}: ${(actual * 100).toFixed(2)}% (limit ${(limit * 100).toFixed(0)}%)`);
+  console.log(`  ${ok ? "PASS" : "FAIL"}  ${name}: ${(actual * 100).toFixed(2)}% (limit ${(limit * 100).toFixed(2)}%)`);
 }
 
 if (failed) {

@@ -15,7 +15,7 @@ API key.
 │                                                            │
 │  content script          service worker                    │
 │  ┌──────────────┐        ┌──────────────────────────────┐  │
-│  │ site adapter │──text─▶│  1. heuristics  (16 rules)   │  │
+│  │ site adapter │──text─▶│  1. heuristics  (21 rules)   │  │
 │  │  Gmail       │        │  2. URL analysis             │  │
 │  │  WhatsApp    │◀verdict│  3. brand impersonation      │  │
 │  │  Telegram    │        │  4. on-device classifier     │  │
@@ -53,10 +53,21 @@ API key.
 
 Four layers, deliberately **not** averaged together.
 
-**1. Heuristics** — 16 rules for the social-engineering tactics that stay
+**1. Heuristics** — 21 rules for the social-engineering tactics that stay
 constant across rewrites and languages: OTP and password requests, gift-card
 payment, UPI collect-requests, crypto transfers, invoice redirection, boss
-impersonation, arrest threats, secrecy demands, remote-access installs.
+impersonation, arrest threats, secrecy demands, remote-access installs,
+family-emergency impersonation, failed-delivery fees, advance-fee job offers,
+refund-callback traps, and 419-style windfall letters.
+
+The last five came from the benchmark rather than from imagination: they were
+the tactics it showed being missed, all scoring 23-33 against a threshold of
+35. Adding them took the targeted miss rate from 15.7% to 3.6%.
+
+Each is conjunctive, and the near-misses are the reason. "Hi mum, this is my
+new number" is a real message people really send; so is "bro, send me the
+wedding photos". Only a claimed relationship *and* a request for money *and*
+either an unverifiable number or a sudden crisis is the tactic.
 
 There are also three *exonerating* rules that push ordinary mail back down.
 Without them, any email containing "urgent" gets flagged, and an extension that
@@ -201,8 +212,8 @@ node tests/test_benchmark.mjs --verbose  # what it gets wrong, and how badly
 `test_engine.mjs` asks whether specific cases behave correctly.
 `test_benchmark.mjs` asks how often the extension is wrong, across the whole
 corpus, through the real fused engine rather than the classifier alone — and
-fails the build if the rates regress. Currently **0.49% of legitimate mail is
-flagged**, 0.25% of it as dangerous, and 15.7% of targeted scams are missed.
+fails the build if the rates regress. Currently **0.55% of legitimate mail is
+flagged**, 0.25% of it as dangerous, and 3.6% of targeted scams are missed.
 
 Those gates are what make "reduce false positives" an actionable goal rather
 than a feeling. Note that the corpus rows are also training rows, so the
@@ -249,12 +260,15 @@ Regenerate it with `python3 tools/build_psl.py`.
   commercial advertising rather than credential phishing, and it has never seen
   a UPI collect-request. The 280 curated rows carry the India-specific tactics,
   and they are the ones the benchmark grades.
-- **Whole tactics still have no rule.** The benchmark misses 15.7% of the
-  targeted scams, and they cluster rather than scatter: family-emergency
-  impersonation ("Hi dad, I broke my screen, transfer to this UPI"),
-  failed-delivery redispatch fees, advance-fee job offers, refund/callback
-  scams, and 419-style inheritance letters. All score 23-33 against a threshold
-  of 35 with the model already confident, so they need rules, not more data.
+- **The last few misses are one-offs.** 3.6% of targeted scams still get
+  through, and unlike the clusters that produced the five newest rules these
+  no longer share a shape — a payroll-redirect, a pre-approved-loan fee, a
+  traffic-fine "settlement". Each would need its own rule for one row of
+  benefit, which is how a rule set starts overfitting its own test set.
+- **Every rule is English-only.** The heuristics encode UPI collect-requests
+  and digital-arrest threats, which are India-specific tactics, but match only
+  English wording. A Hinglish or Devanagari version of the same scam trips
+  nothing. This is the largest remaining gap.
 - **Homoglyph folding is a hand-picked table, not the full confusables set.**
   The Cyrillic and Greek letters with exact Latin twins are covered, which is
   where the abuse concentrates, but Unicode defines thousands more. Importing
@@ -273,4 +287,4 @@ Regenerate it with `python3 tools/build_psl.py`.
 | Output | label + confidence | verdict, score, and reasons in plain language |
 | Warning | banner for blocked emails | in-page card with reasons and actions, shadow-DOM isolated |
 | Sender lists | blocklist | blocklist + allowlist |
-| Tests | 17 e2e checks against the backend | 117 engine checks, model parity, measured accuracy gates, 15 browser checks |
+| Tests | 17 e2e checks against the backend | 146 engine checks, model parity, measured accuracy gates, 15 browser checks |

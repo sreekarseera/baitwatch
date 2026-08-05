@@ -144,6 +144,89 @@ const RULES = [
       /\bchange\s*(?:the\s*)?(?:bank|payment)\s*details\b/.test(t),
   },
   {
+    id: "family_emergency",
+    weight: 2.4,
+    why: "Someone claiming to be family or a friend is asking for money, from an unfamiliar number or during a sudden crisis. This is the most effective scam there is, because it works on affection rather than fear: call the person on the number you already have for them before you send anything.",
+    test: (t) => {
+      // Three parts, and the third is what makes it a scam rather than a
+      // Tuesday. "Hi mum, this is my new number" is a real message people
+      // really send; so is "bro, send me the wedding photos". Only the
+      // combination of a claimed relationship, an actual request for money,
+      // and either an unverifiable number or a sudden crisis is the tactic.
+      const relationship =
+        /\b(?:mum|mom|dad|papa|mummy|beta|bro|sis|son|daughter|uncle|aunt(?:y|ie)?|grand(?:ma|pa)|it'?s\s*me)\b/.test(t);
+      if (!relationship) return false;
+
+      // NOTE: normalize() folds digits onto letters to defeat homoglyphs, so
+      // "8000" arrives as "8ooo". Never match \d in a heuristic — the amount
+      // has to be recognised by the words around it.
+      const wantsMoney =
+        /\b(?:send|transfer|pay|paying|need|deposit|lend|credit)\b/.test(t) &&
+        /\b(?:money|cash|rs|inr|rupees|upi|gpay|paytm|phonepe|amount|rent|fees?|funds?|account)\b/.test(t);
+      if (!wantsMoney) return false;
+
+      const unreachable =
+        /\b(?:new|different|temp(?:orary)?|another|friend'?s|borrowed)\s*(?:number|phone|mobile|sim)\b|lost\s*my\s*(?:phone|wallet)|broke\s*my\s*(?:phone|screen)|texting\s*from\b/.test(t);
+      const crisis =
+        /\b(?:accident|hospital|emergency|surgery|operation|admitted|icu|stuck|stranded|detained|arrested|police\s*station|urgent(?:ly)?|tonight|right\s*(?:now|away))\b/.test(t);
+
+      return unreachable || crisis;
+    },
+  },
+  {
+    id: "delivery_redispatch_fee",
+    weight: 2.0,
+    why: "It says a delivery needs money or re-confirmation before it can reach you. Couriers do not charge you to re-attempt a delivery — the fee is the scam, and the page that collects it collects your card.",
+    test: (t) => {
+      if (!/\b(?:deliver(?:y|ed|ies)?|dispatch|shipment|parcel|package|courier|consignment)\b/.test(t)) {
+        return false;
+      }
+
+      // Any two of these three. One alone is ordinary logistics: real couriers
+      // say "delivered", real tracking pages say "reschedule", and real orders
+      // have charges. Two together is the redispatch-fee pattern.
+      //
+      // Note the missing \b after prefixes like "reschedul" — a trailing \b
+      // there requires a boundary between "l" and "e" and can never match
+      // "reschedule".
+      const failed =
+        /\b(?:could\s*not|couldn'?t|cannot|can'?t|failed|unsuccessful|unable\s*to|attempt(?:ed)?|on\s*hold|pending|held|suspended|incomplete|incorrect\s*address)\b|address\s*verification/.test(t);
+      const action = /reschedul|re-?dispatch|re-?deliver|\bconfirm|\bverif|update\s*your\s*address/.test(t);
+      const payment = /\b(?:pay|paying|payment|fees?|charges?|deposit|customs|duty)\b/.test(t);
+
+      return [failed, action, payment].filter(Boolean).length >= 2;
+    },
+  },
+  {
+    id: "job_advance_fee",
+    weight: 2.2,
+    why: "It offers work but asks you to pay first — a deposit, registration, or kit charge. Real employers pay you; they never ask you to pay them to start.",
+    test: (t) =>
+      /\b(?:job|work\s*from\s*home|part[\s-]?time|data\s*entry|hiring|vacancy|earn|salary|income|packing|typing|recruit)\b/.test(t) &&
+      /\b(?:pay|deposit|paying|charge|fee|amount|registration|security|refundable|membership|joining|advance)\b/.test(t) &&
+      // No \d here on purpose: normalize() folds digits onto letters, so an
+      // amount arrives as "soo" rather than "500". The charge is identified by
+      // what it is called, not by the number attached to it.
+      /\b(?:registration|security|refundable|membership|joining|processing|courier|kit|training|advance|one[\s-]?time)\b[^.!?]{0,20}\b(?:fee|deposit|charge|amount|payment|of)\b|\b(?:pay|deposit)\b[^.!?]{0,25}\b(?:rs|inr|registration|deposit|membership)\b/.test(t),
+  },
+  {
+    id: "refund_callback",
+    weight: 1.8,
+    why: "It reports a charge you don't recognise and gives a number to call to cancel it. The number reaches the scammer, who will talk you into remote access or a transfer to \"refund\" you.",
+    test: (t) =>
+      /\b(?:auto[\s-]?renew(?:ed|al)?|subscription|invoice|order|debited|charged|transaction|purchase|renewal)\b/.test(t) &&
+      /\b(?:call|dial|contact|helpline|toll[\s-]?free|customer\s*(?:care|support)|reach\s*us)\b/.test(t) &&
+      /\b(?:cancel|refund|dispute|unauthori[sz]ed|not\s*(?:authori[sz]ed|you|recognise|recognize)|if\s*this\s*(?:was|is)\s*not|to\s*stop)\b/.test(t),
+  },
+  {
+    id: "windfall_solicitation",
+    weight: 2.2,
+    why: "A stranger says they want to move a large sum of money through you, usually with a story about illness, war, or a dead relative. The story is a script, and the money does not exist.",
+    test: (t) =>
+      /\b(?:million|billion|crore|lakh|fortune|inheritance|estate|fund(?:s)?|sum\s*of\s*money|deposit\s*of)\b/.test(t) &&
+      /\b(?:widow|terminal(?:ly)?\s*ill|dying|late\s*husband|deceased|next\s*of\s*kin|beneficiar(?:y|ies)|barrister|army\s*officer|deployed|refugee|orphan|god[\s-]?fearing|trusted\s*partner|business\s*proposal)\b/.test(t),
+  },
+  {
     id: "generic_salutation",
     weight: 0.5,
     why: "It opens with a generic greeting instead of your name — typical of a message blasted to thousands of addresses.",
