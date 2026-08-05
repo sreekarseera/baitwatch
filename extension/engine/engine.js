@@ -27,6 +27,19 @@ const SUSPICIOUS_AT = 35;
 const ESCALATE_LOW = 25;
 const ESCALATE_HIGH = 80;
 
+// Most the statistical layer can move a verdict. Deliberately below
+// DANGEROUS_AT: the model can raise a flag alone, never a red card alone.
+const MODEL_MAX_PULL = 50;
+
+// On a whole-page scan the model gets far less authority, because it is being
+// asked about text unlike anything it was trained on. It learned from email;
+// a sign-in page is nav chrome, form labels and legal boilerplate. Raising the
+// message-side pull to 50 pushed real Amazon and HDFC login pages to 41 and 43
+// — the model reading "password... verify... account" on a page where those
+// words are simply the furniture. The rule layers already read page structure
+// properly and are what should decide there.
+const MODEL_MAX_PULL_PAGE = 22;
+
 function squash(rawScore) {
   // Map an unbounded positive weight sum onto 0–100 with diminishing returns,
   // so a message with eight weak signals can't outrank one with a single
@@ -68,9 +81,24 @@ export async function analyzeLocal(text, opts = {}) {
 
   const ruleScore = squash(heuristics.score + urls.score + impersonation.score);
 
-  // The model contributes at most ~22 points, and only in the direction it is
-  // confident about. It cannot by itself push a message over DANGEROUS.
-  const modelPull = model.available ? (model.probability - 0.5) * 44 : 0;
+  // The model contributes at most MODEL_MAX_PULL points, in whichever
+  // direction it is confident about.
+  //
+  // This was 22 while the model was 281 rows scoring 93% +/- 18% — at that
+  // variance it had not earned the authority to raise a flag by itself. The
+  // consequence was structural, not conservative: 22 is below SUSPICIOUS_AT,
+  // so a message that tripped no rule could never be flagged however certain
+  // the model was, and short pretext-only phishing ("We detected unusual
+  // activity in your bank account. Login to confirm.") carries no URL and no
+  // credential verb to trip one. It scored 14 and passed as safe.
+  //
+  // Retrained on real mail the model reaches 95.5% +/- 1.2%, and on held-out
+  // data raising this to 50 cuts misses from 72.8% to 33.2% while the false
+  // positive rate does not move (0.92%). The invariant that matters is kept:
+  // 50 is still below DANGEROUS_AT, so the model can warn on its own but
+  // never convict on its own.
+  const maxPull = opts.page?.url ? MODEL_MAX_PULL_PAGE : MODEL_MAX_PULL;
+  const modelPull = model.available ? (model.probability - 0.5) * (maxPull * 2) : 0;
 
   const score = Math.max(0, Math.min(100, ruleScore + modelPull));
 
@@ -170,4 +198,4 @@ function dedupeReasons(reasons) {
   });
 }
 
-export const THRESHOLDS = { DANGEROUS_AT, SUSPICIOUS_AT, ESCALATE_LOW, ESCALATE_HIGH };
+export const THRESHOLDS = { DANGEROUS_AT, SUSPICIOUS_AT, ESCALATE_LOW, ESCALATE_HIGH, MODEL_MAX_PULL, MODEL_MAX_PULL_PAGE };

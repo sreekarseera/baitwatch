@@ -1,6 +1,17 @@
-"""Generates additional scam/legit example rows from templates and appends
-them to dataset.csv (kept alongside the original 10 hand-written rows).
-Run once: python3 generate_dataset.py
+"""Generates scam/legit example rows from templates and appends them to
+curated.csv (alongside the original hand-written rows).
+
+Kept for provenance: this is where most of the 280 curated rows came from.
+
+It writes to curated.csv, NOT dataset.csv. dataset.csv is now built by
+build_corpus.py, which merges these curated rows with the SpamAssassin public
+corpus — appending template rows to it directly would corrupt a 3,192-row
+dataset with duplicates of what it already contains.
+
+Note that it appends unconditionally, so running it twice duplicates its own
+output. It has already been run.
+
+    python3 generate_dataset.py && python3 build_corpus.py
 """
 import csv
 import random
@@ -74,12 +85,13 @@ def main():
     new_rows = generate_rows(scam_templates, 1, 100) + generate_rows(legit_templates, 0, 100)
     random.shuffle(new_rows)
 
-    with open("dataset.csv", "a", newline="", encoding="utf-8") as f:
+    with open("curated.csv", "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         for text, label in new_rows:
             writer.writerow([text, label])
 
-    print(f"Appended {len(new_rows)} rows to dataset.csv")
+    print(f"Appended {len(new_rows)} rows to curated.csv")
+    print("Now run build_corpus.py to rebuild dataset.csv.")
 
 if __name__ == "__main__":
     main()

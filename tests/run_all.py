@@ -401,6 +401,10 @@ def main():
                     run_step("Detection engine",
                              ["node", os.path.join(TESTS, "test_engine.mjs")])))
 
+    results.append(("Accuracy benchmark",
+                    run_step("Accuracy benchmark",
+                             ["node", os.path.join(TESTS, "test_benchmark.mjs")])))
+
     if "--no-browser" not in sys.argv:
         browser = browser_smoke()
         if browser is not None:

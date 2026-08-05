@@ -105,15 +105,41 @@ domain the brand doesn't own, be thin enough to be a login page rather than an
 article, and ask for a password or one-time code. "Sign in with Google" on a
 site that isn't Google is explicitly not a claim to be Google.
 
-**4. On-device classifier** — the TF-IDF + logistic regression model from V1,
-exported to JSON and re-implemented in ~40 lines of JavaScript. No WebAssembly
-(Manifest V3's CSP makes that a fight), no multi-megabyte runtime, no fetch:
-90 KB of weights shipped in the package.
+**4. On-device classifier** — a TF-IDF + logistic regression model, exported to
+JSON and re-implemented in ~40 lines of JavaScript. No WebAssembly (Manifest
+V3's CSP makes that a fight), no multi-megabyte runtime, no fetch: 262 KB of
+weights shipped in the package.
+
+It is trained on 3,192 messages — 280 curated rows plus the SpamAssassin public
+corpus, rebuilt by `training/build_corpus.py`. The corpus matters more than the
+row count suggests. Its `hard_ham` folder is mail that *looks* like spam —
+newsletters, offers, marketing from real senders — which is the most useful
+thing available to a tool whose failure mode is crying wolf. It also removed a
+confound: the curated legitimate rows averaged 61 characters against 100 for
+the scams, so length alone carried signal that nothing in deployment would
+reproduce.
+
+Dropping every term appearing in fewer than three messages *raised* accuracy
+from 94.99% to 96.09% while cutting the vocabulary from 151k terms to 24k — a
+bigram seen once is memorised, not learned. Capping at 6,000 features then
+lands on the size knee: 262 KB, within 0.12pp of a 929 KB model.
 
 The rule layers can convict on their own — a gift-card request is a scam
-regardless of what a bag-of-words model thinks. The classifier only nudges
-borderline cases, contributing at most ~22 of the 100 points. Averaging them
-would let a confident-but-wrong model bury the signal the user needed.
+regardless of what a bag-of-words model thinks. The classifier moves a verdict
+by at most 50 of the 100 points in a message, and 22 on a whole-page scan,
+where it is being asked about text unlike anything it was trained on. Both
+ceilings sit below the score that convicts, so the model can raise a flag by
+itself but never a red card by itself. Averaging the layers instead would let a
+confident-but-wrong model bury the signal the user needed.
+
+That ceiling was 22 everywhere while the model was 281 rows at 93% ±18%. The
+effect was not caution but a dead end: 22 is below the threshold to warn at
+all, so a message tripping no rule could never be flagged however certain the
+model was — and short pretext-only phishing ("We detected unusual activity in
+your bank account. Login to confirm.") has no link and no credential verb to
+trip one. It scored 14 and passed as safe. On held-out data, lifting the
+message ceiling to 50 cut misses from 72.8% to 33.2% with no movement in the
+false positive rate.
 
 Rules also read their context. "Enter your password" is a credential request in
 a message and the most ordinary sentence in the world on the login page it
@@ -161,14 +187,27 @@ extension keeps producing confident, wrong answers with nothing at runtime to
 catch it. The test runs the whole dataset plus adversarial unicode through both
 implementations and fails on any disagreement.
 
-Current model: 96.4% validation accuracy, 1,970 terms, 90 KB.
+Current model: 95.9% validation accuracy, 95.5% ±1.2% five-fold CV,
+6,000 terms, 262 KB.
 
 ## Tests
 
 ```bash
-python3 tests/run_all.py                 # engine, model parity, browser
+python3 tests/run_all.py                 # engine, model parity, benchmark, browser
 python3 tests/run_all.py --no-browser    # skip Chrome
+node tests/test_benchmark.mjs --verbose  # what it gets wrong, and how badly
 ```
+
+`test_engine.mjs` asks whether specific cases behave correctly.
+`test_benchmark.mjs` asks how often the extension is wrong, across the whole
+corpus, through the real fused engine rather than the classifier alone — and
+fails the build if the rates regress. Currently **0.49% of legitimate mail is
+flagged**, 0.25% of it as dangerous, and 15.7% of targeted scams are missed.
+
+Those gates are what make "reduce false positives" an actionable goal rather
+than a feeling. Note that the corpus rows are also training rows, so the
+benchmark flatters the model layer; the honest accuracy number is the
+cross-validated one `train_model.py` prints.
 
 See [`tests/README.md`](tests/README.md) — including the caveat that **branded
 Google Chrome 137+ silently refuses to load unpacked extensions from the command
@@ -184,9 +223,9 @@ extension/
   popup/       manual check, history, sender lists
   options/     settings, API key, model info
   lib/         storage, text utilities, punycode, CSV export
-training/      dataset, trainer, JSON exporter, icon generator
+training/      corpus builder, dataset, trainer, JSON exporter, icons
 tools/         build script for the public suffix list
-tests/         parity, engine, browser smoke
+tests/         parity, engine, accuracy benchmark, browser smoke
 ```
 
 ## License
@@ -205,11 +244,17 @@ Regenerate it with `python3 tools/build_psl.py`.
   scams* on a selection instead.
 - **Chrome-internal pages** (`chrome://`, the Web Store) block all extensions
   by design.
-- **The dataset is small and partly template-generated** — 281 rows. Five-fold
-  cross-validation is 93% ±18%, and that variance is real. This is why the
-  heuristic and URL layers, not the classifier, are what the verdict mostly
-  rests on. Broadening the dataset with real-world scam corpora is the single
-  highest-value improvement available.
+- **The corpus is old, and American.** The 2,912 real messages come from the
+  SpamAssassin public corpus, which is 2002-2003 mail. Its spam is mostly
+  commercial advertising rather than credential phishing, and it has never seen
+  a UPI collect-request. The 280 curated rows carry the India-specific tactics,
+  and they are the ones the benchmark grades.
+- **Whole tactics still have no rule.** The benchmark misses 15.7% of the
+  targeted scams, and they cluster rather than scatter: family-emergency
+  impersonation ("Hi dad, I broke my screen, transfer to this UPI"),
+  failed-delivery redispatch fees, advance-fee job offers, refund/callback
+  scams, and 419-style inheritance letters. All score 23-33 against a threshold
+  of 35 with the model already confident, so they need rules, not more data.
 - **Homoglyph folding is a hand-picked table, not the full confusables set.**
   The Cyrillic and Greek letters with exact Latin twins are covered, which is
   where the abuse concentrates, but Unicode defines thousands more. Importing
@@ -228,4 +273,4 @@ Regenerate it with `python3 tools/build_psl.py`.
 | Output | label + confidence | verdict, score, and reasons in plain language |
 | Warning | banner for blocked emails | in-page card with reasons and actions, shadow-DOM isolated |
 | Sender lists | blocklist | blocklist + allowlist |
-| Tests | 17 e2e checks against the backend | 117 engine checks, model parity, 15 browser checks |
+| Tests | 17 e2e checks against the backend | 117 engine checks, model parity, measured accuracy gates, 15 browser checks |

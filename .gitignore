@@ -7,3 +7,7 @@ __pycache__/
 # Model artifacts are committed (the extension needs them at runtime),
 # but training scratch is not.
 training/model/metrics.json
+
+# Downloaded corpus archives. build_corpus.py re-fetches them on demand;
+# dataset.csv is the committed, redacted output.
+training/corpus-cache/
