@@ -1,5 +1,10 @@
 # Project plan & task split
 
+> **Historical.** This describes the V1 hackathon build, whose FastAPI backend
+> no longer exists. Kept as a record of how the work was organized. For the
+> current state see [`PROGRESS.md`](PROGRESS.md); for how it works now see the
+> root [`README.md`](../README.md).
+
 How the work was organized. For setup and architecture, see the root `README.md`.
 
 ## Phase 1 — working end-to-end build

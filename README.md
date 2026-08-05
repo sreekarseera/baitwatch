@@ -270,6 +270,11 @@ List](https://publicsuffix.org/), which is licensed under MPL-2.0. That license
 covers the data file alone and does not extend to the rest of the project.
 Regenerate it with `python3 tools/build_psl.py`.
 
+## Where it stands
+
+[`docs/PROGRESS.md`](docs/PROGRESS.md) is the running log — what changed,
+what it measured, and what is worth doing next.
+
 ## Known limits
 
 - **Canvas-rendered apps** (Google Docs, Figma) draw text to a canvas rather
