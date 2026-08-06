@@ -39,6 +39,22 @@ $("openSettings").addEventListener("click", () => chrome.runtime.openOptionsPage
 
 /* -------------------------------- analysis -------------------------------- */
 
+/**
+ * Say where this verdict was decided — and, when the cloud tier was tried and
+ * failed, do not claim the message stayed on the machine. It is the one line
+ * in this interface that has to be literally true: a user who reads "nothing
+ * left your computer" has no other way to find out that it did.
+ */
+function describeTier(result) {
+  if (result.tier === "claude") return "Checked on your device, then confirmed with Claude.";
+  if (result.tier === "cloud-failed") {
+    return result.cloudReached
+      ? "Checked on your device. This message was sent to Claude, which answered with an error instead of a verdict."
+      : "Checked on your device. Claude could not be reached, so this message may have left your computer.";
+  }
+  return "Checked entirely on your device — nothing left your computer.";
+}
+
 function renderResult(result) {
   const el = $("result");
   el.hidden = false;
@@ -170,10 +186,7 @@ function renderResult(result) {
 
   const tier = Object.assign(document.createElement("p"), {
     className: "tier",
-    textContent:
-      result.tier === "claude"
-        ? "Checked on your device, then confirmed with Claude."
-        : "Checked entirely on your device — nothing left your computer.",
+    textContent: describeTier(result),
   });
   body.append(tier);
 

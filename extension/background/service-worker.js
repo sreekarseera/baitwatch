@@ -95,7 +95,10 @@ async function runAnalysis({ text, sender = "", source = "manual", extraUrls = [
   const result = await analyze(text, { sender: normalizedSender, source, cloud, extraUrls, page });
 
   await bumpStat("scanned");
-  if (result.tier === "claude") await bumpStat("cloudCalls");
+  // Counts requests *attempted*, not answers received. Counting only successes
+  // would mean the one statistic a user could audit their own privacy with
+  // silently omitted every call that sent their text and then failed.
+  if (result.tier === "claude" || result.tier === "cloud-failed") await bumpStat("cloudCalls");
   if (result.verdict !== VERDICT.SAFE) {
     await bumpStat("flagged");
     updateBadge(tabId, result.verdict);

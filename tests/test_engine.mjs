@@ -20,7 +20,7 @@ globalThis.fetch = async (path) => ({
   json: async () => JSON.parse(readFileSync(path, "utf-8")),
 });
 
-const { analyzeLocal, shouldEscalate, VERDICT } = await import(join(ext, "engine", "engine.js"));
+const { analyze, analyzeLocal, shouldEscalate, VERDICT } = await import(join(ext, "engine", "engine.js"));
 const { analyzeUrls, editDistance, registrableDomain } = await import(join(ext, "engine", "urls.js"));
 const { analyzeHeuristics } = await import(join(ext, "engine", "heuristics.js"));
 const { punycodeToUnicode } = await import(join(ext, "lib", "punycode.js"));
@@ -910,6 +910,50 @@ check("handles very long input", typeof long.score === "number" && !Number.isNaN
 
 const unicode = await analyzeLocal("आपका खाता निलंबित कर दिया गया है। तुरंत OTP साझा करें।");
 check("handles non-Latin script without crashing", typeof unicode.score === "number");
+
+/* ------------------- a failed cloud call must not claim privacy ------------- */
+// The result of a failed second opinion used to inherit tier "on-device" from
+// the local verdict, and both the popup and the in-page warning render that
+// tier as "nothing left your computer". The text had already gone to
+// Anthropic. Of everything this extension says, that sentence is the one that
+// must never be false, so the tier is asserted here rather than trusted.
+
+// Something uncertain enough that the cloud tier is actually consulted — the
+// local layers have to land in the escalation band or `analyze()` never calls
+// out at all and these cases would pass without testing anything.
+const UNCERTAIN = "We could not process your last payment. Update your card to avoid interruption.";
+
+const escalates = await analyzeLocal(UNCERTAIN);
+check("precondition: the fixture reaches the uncertain band", shouldEscalate(escalates),
+  `score ${escalates.score}`);
+
+const answered = await analyze(UNCERTAIN, {
+  cloud: async () => {
+    const err = new Error("Rate limited by the Claude API — try again shortly.");
+    err.sent = true; // Anthropic replied, so the message certainly left
+    throw err;
+  },
+});
+check("a failed cloud call no longer reports the on-device tier",
+  answered.tier === "cloud-failed", `tier=${answered.tier}`);
+check("a reply from Anthropic is recorded as having been reached",
+  answered.cloudReached === true);
+check("the error still reaches the user", Boolean(answered.cloudError));
+check("the local verdict survives the failure", answered.verdict === escalates.verdict);
+
+const unreachable = await analyze(UNCERTAIN, {
+  cloud: async () => {
+    throw new Error("Failed to fetch"); // untagged: the request may never have left
+  },
+});
+check("an unreachable API is also not reported as on-device",
+  unreachable.tier === "cloud-failed", `tier=${unreachable.tier}`);
+check("and it does not claim the message was sent when it cannot know",
+  unreachable.cloudReached === false);
+
+const untouched = await analyze(UNCERTAIN, {});
+check("with no cloud analyzer the tier stays on-device", untouched.tier === "on-device");
+check("and carries no cloud error", untouched.cloudError === undefined);
 
 /* ---------------------------------- report --------------------------------- */
 

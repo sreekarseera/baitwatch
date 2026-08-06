@@ -163,10 +163,17 @@ var BaitWatch = window.BaitWatch || {};
 
     const tier = document.createElement("p");
     tier.className = "tier";
+    // A failed cloud call must not still read as "nothing was sent anywhere" —
+    // by then a request was attempted, and this line is the only place the
+    // user would ever learn otherwise.
     tier.textContent =
       result.tier === "claude"
         ? "Checked on your device, then confirmed with Claude."
-        : "Checked entirely on your device — nothing was sent anywhere.";
+        : result.tier === "cloud-failed"
+          ? result.cloudReached
+            ? "Checked on your device. This message was sent to Claude, which answered with an error instead of a verdict."
+            : "Checked on your device. Claude could not be reached, so this message may have been sent."
+          : "Checked entirely on your device — nothing was sent anywhere.";
     body.appendChild(tier);
 
     if (result.cloudError) {

@@ -78,6 +78,20 @@ Call record_verdict with your assessment.`;
 }
 
 /**
+ * Mark a failure that happened *after* Anthropic answered.
+ *
+ * The distinction matters to the user, not to the code: once a response comes
+ * back, the message text definitely left the machine, and the interface must
+ * not go on claiming otherwise. A `fetch` that rejects outright carries no
+ * such proof, so it stays untagged and the UI hedges instead.
+ */
+function sentError(message) {
+  const err = new Error(message);
+  err.sent = true;
+  return err;
+}
+
+/**
  * @param {string} apiKey
  * @returns {(text: string, local: object) => Promise<object|null>}
  */
@@ -110,17 +124,17 @@ export function createCloudAnalyzer(apiKey) {
     });
 
     if (!response.ok) {
-      throw new Error(await describeError(response));
+      throw sentError(await describeError(response));
     }
 
     const data = await response.json();
 
     if (data.stop_reason === "refusal") {
-      throw new Error("Claude declined to analyze this message.");
+      throw sentError("Claude declined to analyze this message.");
     }
 
     const block = (data.content || []).find((b) => b.type === "tool_use" && b.name === "record_verdict");
-    if (!block) throw new Error("Claude returned no verdict.");
+    if (!block) throw sentError("Claude returned no verdict.");
 
     const { score, explanation, reasons, advice } = block.input;
     return {

@@ -167,7 +167,19 @@ export async function analyze(text, opts = {}) {
   } catch (err) {
     // Cloud failures degrade to the local verdict rather than blocking. The
     // user still gets an answer; the error surfaces as a non-blocking note.
-    return { ...local, cloudError: err.message };
+    //
+    // The tier must change even though the verdict didn't. `local` carries
+    // tier "on-device", which the popup and the in-page warning both render
+    // as "nothing left your computer" — and by this point a request was
+    // attempted, so that sentence is no longer true. `cloudReached` says
+    // whether Anthropic answered: if it did, the text certainly left the
+    // machine; if the fetch never resolved, we cannot claim either way.
+    return {
+      ...local,
+      tier: "cloud-failed",
+      cloudReached: Boolean(err.sent),
+      cloudError: err.message,
+    };
   }
 }
 

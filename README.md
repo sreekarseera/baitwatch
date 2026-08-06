@@ -470,7 +470,7 @@ into the browser.
 | Output | label + confidence | verdict, score, and reasons in plain language |
 | Warning | banner for blocked emails | in-page card with reasons and actions, shadow-DOM isolated |
 | Sender lists | blocklist | blocklist + allowlist |
-| Tests | 17 e2e checks against the backend | 164 engine checks, 27 adapter checks, model parity, five accuracy gates, 15 browser checks |
+| Tests | 17 e2e checks against the backend | 200 engine checks, 29 adapter checks, model parity, five accuracy gates, 18 browser checks |
 
 `docs/TASKS_OVERVIEW.md` and `docs/DEMO_SCRIPT.md` are V1 documents, kept as a
 record of how the hackathon was organized and labelled as historical. They do

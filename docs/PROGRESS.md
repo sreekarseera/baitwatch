@@ -13,7 +13,7 @@ Last updated **2026-08-06**.
 | Archive | `github.com/sreekarseera/baitwatch-archive` (private, the original 32-commit history) |
 | Detection | 21 heuristics + URL analysis + brand impersonation + on-device classifier |
 | Model | 3,248 rows, 95.85% validation, 94.77% ±1.59% five-fold CV, 6,000 terms, 262 KB |
-| Tests | 191 engine checks, model parity (tokens + predictions), 5 accuracy gates, 29 adapter checks, 18 browser checks |
+| Tests | 200 engine checks, model parity (tokens + predictions), 5 accuracy gates, 29 adapter checks, 18 browser checks |
 
 Measured accuracy, from `node tests/test_benchmark.mjs`:
 
@@ -52,13 +52,29 @@ arbitrary page, finding nothing message-shaped is the ordinary outcome, and a
 monitor that cries wolf gets ignored — which would leave the extension exactly
 as silent as it was before.
 
-**A privacy claim that can be false** (`engine.js:170`). Found while auditing
-the manifest, not yet fixed. When the Claude tier is on and the request fails,
-`analyze()` returns `{...local, cloudError}` with `tier` still `"on-device"`,
-so `popup.js` and `overlay.js` print "Checked entirely on your device — nothing
-left your computer" directly above "Second opinion unavailable". Text was sent
-to Anthropic and the interface says it was not. The same root cause makes
-`cloudCalls` undercount, so the counter that would expose it is wrong too.
+**A privacy claim that could be false** (`engine.js`, `popup.js`,
+`overlay.js`, `claude.js`). Found while auditing the manifest. When the Claude
+tier was on and the request failed, `analyze()` returned `{...local,
+cloudError}` with `tier` still `"on-device"` — and both the popup and the
+in-page warning render that tier as "Checked entirely on your device — nothing
+left your computer", printed directly above "Second opinion unavailable". The
+text had gone to Anthropic and the interface said it had not. The same root
+cause made `cloudCalls` skip every failed call, so the one counter a user could
+audit this with was wrong in the same direction.
+
+A failure now returns tier `"cloud-failed"`, and `claude.js` tags the errors
+it raises *after* a response arrives. That distinction is the difference
+between two true sentences and one false one: if Anthropic answered, the text
+certainly left the machine and the UI says so plainly; if the `fetch` never
+resolved, nothing proves either way and the UI says "may have left your
+computer" rather than guessing. `cloudCalls` counts attempts, not successes.
+
+Of everything this extension says, that one line is the one that has to be
+literally true — a user who reads "nothing left your computer" has no other
+way to discover that it did. So it is asserted in `tests/test_engine.mjs`
+now rather than trusted, including a check that the fixture actually reaches
+the escalation band, without which the whole group would pass while testing
+nothing.
 
 **Manifest** (`extension/manifest.json`). `web_accessible_resources` published
 the 262 KB model to every page on the web under `<all_urls>`; nothing in a
