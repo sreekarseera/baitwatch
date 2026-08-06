@@ -15,3 +15,6 @@ training/corpus-cache/
 # Store upload zips. tools/package.py rebuilds them byte-identically from any
 # commit, so committing one would only ever go stale.
 dist/
+
+# Agent worktrees are transient, and each is its own git repo.
+.claude/worktrees/

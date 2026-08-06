@@ -86,10 +86,16 @@ export async function classify(text) {
     // How many vocabulary terms the document actually hit. The caller needs
     // this to tell "confidently benign" from "I have no idea what this says":
     // both come back as a probability near the intercept, but only one of them
-    // deserves a vote. Devanagari is the case that forced it — the tokenizer
-    // cannot see Hindi script at all, so a Hindi scam yields almost no known
-    // terms, a probability just under 0.5, and a *negative* pull that pushed
-    // real scams back below the warning threshold.
+    // deserves a vote. Devanagari is the case that forced it — a Hindi scam
+    // yields almost no known terms, a probability just under 0.5, and a
+    // *negative* pull that pushed real scams back below the warning threshold.
+    //
+    // The tokenizer used to be the reason; it could not see Hindi script at
+    // all. It can now, and this still matters, because the cause moved rather
+    // than went away: the corpus holds 16 Devanagari rows, too few to survive
+    // min_df=3 and a 6,000-feature cap, so not one Hindi term has a weight.
+    // Correct tokens the model has never been taught still come back as zero
+    // known terms, and abstaining is still the only honest answer.
     knownTerms: vector.size,
   };
 }

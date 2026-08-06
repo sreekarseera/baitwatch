@@ -67,7 +67,7 @@ Re-run it and you should see the same numbers.
 | False alarms on ordinary Hinglish | **0** (of 21) |
 
 The honest accuracy figure for the model layer on its own is the cross-validated
-one `training/train_model.py` prints: **94.80% ±1.66%** over 3,248 rows, with
+one `training/train_model.py` prints: **94.77% ±1.59%** over 3,248 rows, with
 95.85% on the held-out split. The benchmark's corpus rows are also training
 rows, so it flatters the model — it is a regression alarm, not a claim about
 accuracy on mail it has never seen.
@@ -184,8 +184,9 @@ Roman-script Hindi and **100%** written in Devanagari. Both are now covered:
 ones, with no false alarms on ordinary Hinglish.
 
 This works because heuristics run regexes over normalized text and never
-tokenize — which matters, because the tokenizer *cannot see Devanagari at all*.
-Two things had to be fixed alongside the vocabulary:
+tokenize — which is what let this layer cover Devanagari back when the
+tokenizer could not see it at all. Two things had to be fixed alongside the
+vocabulary:
 
 - The exonerating rule "doesn't ask you to click, pay, or hand over anything"
   tested for the **absence** of English verbs, so it fired on every non-English
@@ -195,7 +196,10 @@ Two things had to be fixed alongside the vocabulary:
 - The classifier returned a probability just under 0.5 for Hindi it could not
   read, which *subtracted* points. It now abstains below a minimum number of
   recognised terms — "confidently benign" and "I cannot read this" look
-  identical in a probability, and only one deserves a vote.
+  identical in a probability, and only one deserves a vote. That abstention is
+  still doing the work, for a different reason: the tokenizer reads Devanagari
+  now, but the corpus is too thin in it for the model to have learned anything,
+  so a Hindi message still hits no known terms.
 
 There are also three *exonerating* rules that push ordinary mail back down.
 Without them, any email containing "urgent" gets flagged, and an extension that
@@ -346,12 +350,19 @@ cd .. && python3 tests/test_parity.py   # REQUIRED — see CONTRIBUTING.md
 ```
 
 **Always run the parity test after retraining.** `extension/lib/text.js`
-re-implements scikit-learn's tokenizer by hand. If the two ever drift apart the
-extension keeps producing confident, wrong answers with nothing at runtime to
-catch it. The test runs the whole dataset plus adversarial unicode through both
-implementations and fails on any disagreement.
+re-implements the tokenizer configured in `train_model.py` by hand. If the two
+ever drift apart the extension keeps producing confident, wrong answers with
+nothing at runtime to catch it. The test runs the whole dataset plus
+adversarial unicode through both implementations and fails on any
+disagreement.
 
-Current model: 95.85% held-out accuracy, 94.80% ±1.66% five-fold CV,
+It compares tokens as well as probabilities, and the token check is the one
+that matters for a script the corpus barely covers. A term with no weight is
+absent from the vector either way, so two tokenizers can disagree about every
+Devanagari word in a message and still return the same probability — which is
+exactly how the Devanagari bug survived as long as it did.
+
+Current model: 95.85% held-out accuracy, 94.77% ±1.59% five-fold CV,
 6,000 terms, 262 KB.
 
 ## Layout
@@ -387,12 +398,16 @@ docs/          running progress log, plus archived V1 material
   no longer share a shape — a payroll-redirect, a pre-approved-loan fee, a
   traffic-fine "settlement". Each would need its own rule for one row of
   benefit, which is how a rule set starts overfitting its own test set.
-- **The model is blind to Devanagari.** The rules cover it, but scikit-learn's
-  default tokenizer — which the extension mirrors exactly — splits words at
-  Unicode Marks, and Devanagari vowel signs are Marks. "खाता" tokenizes to
-  nothing. Parity passes because Python and JavaScript are wrong identically.
-  Fixing it means changing the token pattern on both sides in lockstep and
-  retraining, so Hindi-script messages currently rest on the rule layer alone.
+- **The model still contributes nothing on Devanagari, though it can now read
+  it.** The tokenizer used to split words at Unicode Marks, and Devanagari
+  vowel signs are Marks, so "खाता" tokenized to nothing and "आपका" to the
+  fragment "आपक". Both sides now keep Indic marks attached to their base
+  letters and the tokens are correct. The vocabulary is not: the corpus holds
+  16 Devanagari rows against 3,248, so no Hindi term appears in the three
+  documents `min_df` requires *and* survives the 6,000-feature cap, and the
+  model has a weight for exactly zero of them. It abstains, and Hindi-script
+  messages still rest on the rule layer alone. This is now a dataset problem,
+  and only more Devanagari rows will move it.
 - **Transliteration has no fixed spelling.** "bhejiye", "bhejo" and "bhej do"
   are one word, and the rules match a stem list rather than anything
   exhaustive. Spellings nobody thought of will be missed.
