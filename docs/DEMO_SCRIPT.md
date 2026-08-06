@@ -1,4 +1,16 @@
-# Demo script (~90 seconds spoken)
+# Demo script (~90 seconds spoken) — V1 hackathon, archived
+
+> **This is a historical document. It does not describe the current code.**
+>
+> It is the script for the original hackathon demo, and every step below assumes
+> **V1**: a FastAPI backend started with `uvicorn`, a single classifier reporting
+> a confidence percentage, and the old blocked-address banner. None of that
+> exists any more — V2 has no backend at all, and the scores quoted here were
+> produced by a model that has since been retrained on a different corpus. Do not
+> follow these instructions.
+>
+> Kept as a record of how the project was presented. For what the extension does
+> now, see the root [`README.md`](../README.md).
 
 Every message referenced here is pre-tested — exact texts and verified scores
 in `demo-examples.txt`. Copy-paste, don't retype.
