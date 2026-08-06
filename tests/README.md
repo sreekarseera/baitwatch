@@ -6,9 +6,9 @@ Five layers, cheapest first. `python3 tests/run_all.py` runs all of them.
 |---|---|---|
 | Model parity | `test_parity.py` | The JavaScript re-implementation of the classifier still agrees with scikit-learn |
 | Detection engine | `test_engine.mjs` | 164 behavioural checks: scams caught, ordinary mail left alone, URL and whole-page logic correct |
-| Adapter health | `test_adapters.mjs` | 27 checks: each adapter's selectors and landmarks still describe its site, and a broken adapter is reported rather than going quiet |
+| Adapter health | `test_adapters.mjs` | 29 checks: each adapter's selectors and landmarks still describe its site, and a broken adapter is reported rather than going quiet — without taking the content script down with it |
 | Accuracy benchmark | `test_benchmark.mjs` | Five gates on measured false-positive and miss rates, over the whole corpus through the real fused engine |
-| Browser smoke | `run_all.py` | 15 checks: the extension loads in Chrome, warns on a real page, and catches a fake sign-in page via its link targets |
+| Browser smoke | `run_all.py` | 18 checks: the extension loads in Chrome, the packaged model loads under MV3's CSP, a real page gets warned on, and a fake sign-in page is caught via its link targets |
 
 ## Why parity is a test and not a comment
 
@@ -62,6 +62,17 @@ To actually run it, use Chrome for Testing:
 npx @puppeteer/browsers install chrome@stable
 CHROME_BIN="/path/to/Google Chrome for Testing" python3 tests/run_all.py
 ```
+
+## The smoke test owns its ports
+
+The browser layer drives Chrome on port 9223 and serves its fixtures on 8791.
+Chrome refuses to start twice on one debugging port and `http.server` exits when
+its bind fails, but neither complains anywhere the test can see, so a second
+copy of this suite running alongside the first used to adopt the first one's
+browser and fixtures — and then report on *that* checkout's extension. Failures
+attributed to code that was never loaded are worse than no test at all, so the
+run now refuses to start when either port is occupied. Set `BAITWATCH_CDP_PORT`
+and `BAITWATCH_PAGES_PORT` to test two checkouts at once.
 
 The test drives a throwaway profile in headless mode — it never touches your
 normal Chrome, your tabs, or the extension's stored data.

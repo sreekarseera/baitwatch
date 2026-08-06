@@ -1,6 +1,6 @@
 // Service worker — the only place analysis runs.
 //
-// Centralizing here means the ~90 KB model is parsed once per browser session
+// Centralizing here means the ~260 KB model is parsed once per browser session
 // rather than once per tab, detection logic never executes inside a page's
 // origin, and the API key never has to be exposed to a content script.
 

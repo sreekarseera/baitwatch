@@ -4,7 +4,7 @@
 // exported to plain JSON and re-implemented in ~40 lines of JavaScript. That
 // buys three things a runtime like onnxruntime-web would not: no WebAssembly
 // (Manifest V3's CSP makes WASM a fight), no multi-megabyte dependency, and
-// no network fetch — the whole model is ~200 KB of JSON shipped in the crx.
+// no network fetch — the whole model is ~260 KB of JSON shipped in the crx.
 //
 // The tokenizer here must match scikit-learn's exactly or the weights are
 // meaningless. tests/test_parity.py asserts that Python and JS agree on every

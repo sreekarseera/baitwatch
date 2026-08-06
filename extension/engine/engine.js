@@ -1,4 +1,4 @@
-// Verdict engine — fuses the three detection layers into one decision.
+// Verdict engine — fuses the four detection layers into one decision.
 //
 // Design note: the layers are deliberately not averaged. Heuristics and URL
 // signals are *evidence of a specific tactic* and are allowed to convict on

@@ -303,6 +303,40 @@ def browser_smoke():
         check("service worker has extension APIs", manifest_version == "2.0.0",
               f"getManifest().version = {manifest_version!r}")
 
+        # The model file is no longer listed in web_accessible_resources, which
+        # is right — nothing in a content script reads it, and publishing it to
+        # every page on the web was a fingerprinting surface. But WAR is also
+        # what would have covered a mistake here, so assert the remaining path
+        # directly: engine/model.js fetches chrome.runtime.getURL() from inside
+        # the worker, and an extension reading its own packaged resource needs
+        # no WAR entry. Asserted on the parsed artifact rather than on a verdict
+        # that happens to depend on it, so a regression cannot hide behind an
+        # unrelated failure further down.
+        raw_model = evaluate(
+            cdp,
+            sw_session,
+            """fetch(chrome.runtime.getURL('engine/model-weights.json'))
+                 .then(r => r.ok ? r.json() : {error: 'HTTP ' + r.status})
+                 .then(m => JSON.stringify(m.error ? m : {
+                   vocabSize: m.vocabSize,
+                   terms: (m.terms || []).length,
+                   coef: (m.coef || []).length,
+                   validationAccuracy: m.validationAccuracy,
+                 }))
+                 .catch(e => JSON.stringify({error: String(e)}))""",
+            await_promise=True,
+        )
+        model = json.loads(raw_model) if raw_model else {}
+        check("model weights load in-browser without a web_accessible_resources entry",
+              not model.get("error"), f"{model.get('error')}")
+        check("the loaded model is the whole vocabulary, not a truncated read",
+              model.get("terms") == model.get("vocabSize") == model.get("coef") == 6000,
+              f"got {model}")
+        check("the loaded model reports its validation accuracy",
+              isinstance(model.get("validationAccuracy"), float)
+              and model["validationAccuracy"] > 0.9,
+              f"validationAccuracy={model.get('validationAccuracy')!r}")
+
         # Content script: warning must appear on a scam page and not on a clean one.
         page = cdp.cmd("Target.createTarget", {"url": f"http://127.0.0.1:{PAGES_PORT}/scam.html"})
         page_session = attach(cdp, page["targetId"])
