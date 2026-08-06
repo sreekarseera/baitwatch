@@ -89,8 +89,17 @@ async function runAnalysis({ text, sender = "", source = "manual", extraUrls = [
     }
   }
 
+  // Three things have to be true before a second opinion is even possible: the
+  // tier is on, a key is saved, and the user has actually granted access to
+  // api.anthropic.com. Checking the permission here rather than letting the
+  // fetch fail keeps the verdict honest — an attempt that could never have
+  // left the machine must not be reported as one that might have.
   const cloud =
-    settings.cloudTier && settings.apiKey ? createCloudAnalyzer(settings.apiKey) : null;
+    settings.cloudTier &&
+    settings.apiKey &&
+    (await chrome.permissions.contains({ origins: ["https://api.anthropic.com/*"] }))
+      ? createCloudAnalyzer(settings.apiKey)
+      : null;
 
   const result = await analyze(text, { sender: normalizedSender, source, cloud, extraUrls, page });
 

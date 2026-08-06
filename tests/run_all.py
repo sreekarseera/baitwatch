@@ -303,6 +303,33 @@ def browser_smoke():
         check("service worker has extension APIs", manifest_version == "2.0.0",
               f"getManifest().version = {manifest_version!r}")
 
+        # The extension's central claim is that a fresh install can reach
+        # nothing. api.anthropic.com is an optional host permission, requested
+        # from the options page only when the user switches the second opinion
+        # on, so a just-installed extension must hold no host access at all.
+        # This is asserted rather than trusted because the failure mode is
+        # invisible: moving the origin back to host_permissions would work
+        # perfectly and quietly grant every user network access on install.
+        granted = evaluate(
+            cdp, sw_session,
+            "chrome.permissions.getAll().then(p => JSON.stringify(p.origins || []))",
+            await_promise=True,
+        )
+        granted_origins = json.loads(granted) if granted else []
+        # <all_urls> comes from the content script's own matches, which is a
+        # separate grant and not network access to a remote host.
+        remote = [o for o in granted_origins if "anthropic" in o]
+        check("a fresh install holds no access to api.anthropic.com",
+              remote == [], f"granted: {granted_origins}")
+
+        declared = evaluate(
+            cdp, sw_session,
+            "JSON.stringify(chrome.runtime.getManifest().optional_host_permissions || [])",
+        )
+        check("the Anthropic origin is declared optional, not mandatory",
+              "https://api.anthropic.com/*" in json.loads(declared or "[]"),
+              f"optional_host_permissions = {declared}")
+
         # The model file is no longer listed in web_accessible_resources, which
         # is right — nothing in a content script reads it, and publishing it to
         # every page on the web was a fingerprinting surface. But WAR is also

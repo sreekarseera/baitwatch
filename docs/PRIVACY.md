@@ -105,6 +105,14 @@ addition, it does nothing until you have saved an Anthropic API key: both the
 toggle and a saved key are required before any request is made
 (`extension/background/service-worker.js`).
 
+**A fresh install cannot reach the network at all.** Permission to contact
+`api.anthropic.com` is declared as *optional*, so installing the extension
+grants nothing. Chrome asks you for it at the moment you switch the second
+opinion on, and the extension gives the permission back when you switch it
+off. Decline, and the feature stays off rather than failing quietly. This is
+verified in a real browser by the project's test suite, not merely asserted
+here.
+
 **It uses your API key, not ours.** You create the key at
 console.anthropic.com, paste it into Settings, and Anthropic bills your account
 for the requests. This project has no key and no account of its own.

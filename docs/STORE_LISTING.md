@@ -171,12 +171,24 @@ Shows the verdict for that right-click check. The popup is not open at that
 moment, so a notification is the only place the answer can go. One notification
 per check, no others.
 
-### Host permission: `https://api.anthropic.com/*`
+### Optional host permission: `https://api.anthropic.com/*`
 
-Used only by the optional Claude second opinion, and only when the user has
-turned it on and saved their own API key. It covers exactly one endpoint,
-`POST /v1/messages`, called from `extension/engine/claude.js`. The extension has
-no other host permission and contacts no other server.
+Declared under `optional_host_permissions`, so it is **not** granted at
+install. The options page requests it with `chrome.permissions.request()` at
+the moment the user switches the Claude second opinion on, and calls
+`chrome.permissions.remove()` when they switch it back off. If the user
+declines, the toggle returns to off rather than promising a feature the
+extension cannot deliver.
+
+It covers exactly one endpoint, `POST /v1/messages`, called from
+`extension/engine/claude.js`. The service worker re-checks the grant before
+every escalation (`chrome.permissions.contains`), so a permission revoked from
+`chrome://extensions` stops the feature rather than producing failed requests.
+
+The extension holds no other host permission and contacts no other server. A
+newly installed copy can reach nothing at all — `tests/run_all.py` asserts this
+in a real browser by reading `chrome.permissions.getAll()` from the service
+worker.
 
 ### Content scripts on `<all_urls>`
 

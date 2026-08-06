@@ -111,7 +111,7 @@ there is nowhere else for anything to go.
 | `notifications` | showing the verdict of a right-click scan |
 | `activeTab`, `scripting` | injecting the scanner into the current tab for *Scan this entire page*. `activeTab` is granted by Chrome only at the moment you click the extension, not ambiently |
 | content script on `<all_urls>` | the generic adapter has to already be present to read a message on a site with no dedicated adapter. It hands text to the extension's own service worker in the same browser process |
-| host permission `https://api.anthropic.com/*` | the only remote origin this extension is able to reach at all, and only with the second opinion enabled |
+| optional host permission `https://api.anthropic.com/*` | the only remote origin this extension can ever reach. It is **not** granted at install: the options page asks for it at the moment you switch the second opinion on, and gives it back when you switch it off. A fresh install has no network access at all, which the browser test suite asserts rather than assumes |
 
 There is no `tabs` permission, so the extension cannot enumerate your open tabs
 or read their URLs. The whole-page scan works by asking the content script to
@@ -470,7 +470,7 @@ into the browser.
 | Output | label + confidence | verdict, score, and reasons in plain language |
 | Warning | banner for blocked emails | in-page card with reasons and actions, shadow-DOM isolated |
 | Sender lists | blocklist | blocklist + allowlist |
-| Tests | 17 e2e checks against the backend | 200 engine checks, 29 adapter checks, model parity, five accuracy gates, 18 browser checks |
+| Tests | 17 e2e checks against the backend | 200 engine checks, 29 adapter checks, model parity, five accuracy gates, 20 browser checks |
 
 `docs/TASKS_OVERVIEW.md` and `docs/DEMO_SCRIPT.md` are V1 documents, kept as a
 record of how the hackathon was organized and labelled as historical. They do

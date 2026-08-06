@@ -13,7 +13,7 @@ Last updated **2026-08-06**.
 | Archive | `github.com/sreekarseera/baitwatch-archive` (private, the original 32-commit history) |
 | Detection | 21 heuristics + URL analysis + brand impersonation + on-device classifier |
 | Model | 3,248 rows, 95.85% validation, 94.77% ±1.59% five-fold CV, 6,000 terms, 262 KB |
-| Tests | 200 engine checks, model parity (tokens + predictions), 5 accuracy gates, 29 adapter checks, 18 browser checks |
+| Tests | 200 engine checks, model parity (tokens + predictions), 5 accuracy gates, 29 adapter checks, 20 browser checks |
 
 Measured accuracy, from `node tests/test_benchmark.mjs`:
 
@@ -75,6 +75,28 @@ way to discover that it did. So it is asserted in `tests/test_engine.mjs`
 now rather than trusted, including a check that the fixture actually reaches
 the escalation band, without which the whole group would pass while testing
 nothing.
+
+**Network access is now optional, and off until asked for**
+(`manifest.json`, `options/options.js`, `background/service-worker.js`).
+`api.anthropic.com` was a mandatory `host_permissions` entry, so every user
+granted network access at install to enable a feature that is off by default —
+the install prompt contradicted the extension's central claim at exactly the
+moment someone is deciding whether to trust it.
+
+It is an `optional_host_permissions` entry now. The options page requests it
+when the second opinion is switched on and removes it when it is switched off,
+so revoking the feature revokes the capability rather than just setting a flag,
+and a refusal puts the toggle back rather than promising something the
+extension cannot do. The service worker re-checks the grant before every
+escalation: a permission revoked from `chrome://extensions` disables the tier
+instead of producing failures that would read, misleadingly, as "this may have
+left your computer".
+
+The claim that a fresh install can reach nothing is now asserted in the
+browser, by reading `chrome.permissions.getAll()` from the service worker.
+Moving the origin back to `host_permissions` would work perfectly and silently
+grant every user network access on install, which is precisely the kind of
+regression no other check would notice.
 
 **Manifest** (`extension/manifest.json`). `web_accessible_resources` published
 the 262 KB model to every page on the web under `<all_urls>`; nothing in a
