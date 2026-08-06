@@ -459,6 +459,37 @@ async function renderFooter() {
   $("footer").textContent = parts.join(" · ");
 }
 
+/* ----------------------------- adapter health ----------------------------- */
+
+/**
+ * Ask the current tab whether auto-scan is still finding anything.
+ *
+ * Deliberately quiet: a plain sendMessage with no injection fallback, because
+ * this runs on every popup open and having no content script is the ordinary
+ * case (a restricted page, a tab older than the extension). Only a confirmed
+ * breakage is worth a word to the user; everything else stays silent.
+ */
+async function renderAdapterHealth() {
+  let health;
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) return;
+    health = await chrome.tabs.sendMessage(tab.id, { type: "GET_HEALTH" });
+  } catch {
+    return; // no content script in this tab
+  }
+
+  if (!health || health.status !== "broken" || !health.autoScan) return;
+
+  const alert = $("adapterAlert");
+  alert.textContent =
+    `Auto-scan isn't finding messages on ${health.label || "this page"} any more — ` +
+    `the site has probably changed its layout. Checking by hand still works: ` +
+    `select the text and use “Use selection”, or scan the whole page.`;
+  alert.hidden = false;
+}
+
 renderHistory();
 renderSenders();
 renderFooter();
+renderAdapterHealth();

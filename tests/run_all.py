@@ -1,14 +1,17 @@
 """Run the full BaitWatch V2 test suite.
 
-Three layers, cheapest first:
+Four layers, cheapest first:
 
   1. Model parity   — the JS re-implementation still matches scikit-learn.
-  2. Engine         — 61 behavioural checks on scams, legitimate mail, URLs.
-  3. Browser smoke  — the extension actually loads in Chrome, the service
+  2. Engine         — behavioural checks on scams, legitimate mail, URLs, plus
+                      the accuracy gates on the whole fused engine.
+  3. Adapters       — the site selectors still collect, and the health monitor
+                      still tells a rotted selector from an empty page.
+  4. Browser smoke  — the extension actually loads in Chrome, the service
                       worker starts clean, and a scam on a real page gets a
                       warning injected into the DOM.
 
-Layers 1-2 need only Python + Node. Layer 3 additionally needs Chrome and
+Layers 1-3 need only Python + Node. Layer 4 additionally needs Chrome and
 `pip install websocket-client`; it is skipped with a clear message if either
 is missing, rather than failing the run.
 
@@ -404,6 +407,10 @@ def main():
     results.append(("Accuracy benchmark",
                     run_step("Accuracy benchmark",
                              ["node", os.path.join(TESTS, "test_benchmark.mjs")])))
+
+    results.append(("Site adapters",
+                    run_step("Site adapters",
+                             ["node", os.path.join(TESTS, "test_adapters.mjs")])))
 
     if "--no-browser" not in sys.argv:
         browser = browser_smoke()

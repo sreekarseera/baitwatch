@@ -99,6 +99,20 @@ h2:first-child { margin-top: 0; }
 .panel { display: none; padding: 12px 14px 14px; }
 .panel.active { display: block; }
 
+/* Shown when auto-scan has stopped finding messages on a site it supports.
+   Warn-coloured rather than danger-coloured: nothing hostile has happened,
+   the extension has just gone deaf on this page. */
+.alert {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--warn);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 textarea,
 input[type="text"] {
   width: 100%;

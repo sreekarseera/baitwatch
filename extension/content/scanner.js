@@ -25,6 +25,8 @@
   // extension would re-analyze (and re-render) constantly.
   const handled = new Map(); // id -> "pending" | "done" | "dismissed"
 
+  const health = PD.createHealthMonitor(adapter);
+
   let settings = null;
   let enabled = true;
 
@@ -64,6 +66,31 @@
     }
   }
 
+  /**
+   * Say once, in the page's own console, that auto-scan has stopped working.
+   *
+   * A rotted selector is silent by nature — the extension keeps running and
+   * simply never finds anything, so without this the first sign of trouble is
+   * a scam that went unflagged. The popup surfaces the same state on demand;
+   * this is the trace left behind for whoever goes looking afterwards.
+   */
+  let warnedBroken = false;
+
+  function noteHealth(status) {
+    if (status !== "broken") {
+      warnedBroken = false; // recovered — a later break is news again
+      return;
+    }
+    if (warnedBroken) return;
+    warnedBroken = true;
+    console.warn(
+      `[BaitWatch] the ${adapter.name} adapter found no messages on a page that is ` +
+        `showing a conversation. Its selectors have probably changed, which means ` +
+        `auto-scan is not working here. Checking text by hand still works: select it ` +
+        `and right-click, or use the popup's page scan.`
+    );
+  }
+
   async function scan() {
     if (!enabled) return;
 
@@ -72,8 +99,11 @@
       messages = adapter.collect();
     } catch (err) {
       console.warn("[BaitWatch] adapter failed:", err);
+      noteHealth(health.record(0, { threw: true }));
       return;
     }
+
+    noteHealth(health.record(messages.length));
 
     for (const message of messages) {
       if (handled.has(message.id)) continue;
@@ -272,6 +302,15 @@
       handled.clear();
       scan().then(() => respond({ ok: true, adapter: adapter.name }));
       return true;
+    }
+    if (msg.type === "GET_HEALTH") {
+      respond({
+        adapter: adapter.name,
+        label: adapter.label,
+        status: health.status,
+        autoScan: enabled,
+      });
+      return false;
     }
     if (msg.type === "GET_SELECTION") {
       respond({ text: (window.getSelection()?.toString() || "").trim() });
