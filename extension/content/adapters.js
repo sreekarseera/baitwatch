@@ -181,12 +181,19 @@ var BaitWatch = window.BaitWatch || {};
   // watching— empty on a page that looks populated, not yet long enough
   // broken  — the selectors have almost certainly rotted
   BaitWatch.createHealthMonitor = function createHealthMonitor(adapter, deps = {}) {
-    const present =
-      deps.present || (() => adapter.landmarks.some((sel) => document.querySelector(sel)));
+    // An adapter that declares no landmarks — or predates the field entirely,
+    // which is what an older injected copy of this file looks like — gets the
+    // same answer the generic adapter gets: "unknown". Reading the field
+    // defensively matters more than it looks, because the scanner builds this
+    // monitor before it registers its message listener, so a throw here would
+    // silence the whole content script.
+    const landmarks = Array.isArray(adapter.landmarks) ? adapter.landmarks : [];
+
+    const present = deps.present || (() => landmarks.some((sel) => document.querySelector(sel)));
 
     let misses = 0;
     let firstMissAt = 0;
-    let status = adapter.landmarks.length ? "ok" : "unknown";
+    let status = landmarks.length ? "ok" : "unknown";
 
     return {
       get status() {
@@ -220,7 +227,7 @@ var BaitWatch = window.BaitWatch || {};
           return status;
         }
 
-        if (!adapter.landmarks.length) {
+        if (!landmarks.length) {
           status = "unknown";
           return status;
         }

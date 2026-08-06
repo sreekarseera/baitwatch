@@ -25,7 +25,20 @@
   // extension would re-analyze (and re-render) constantly.
   const handled = new Map(); // id -> "pending" | "done" | "dismissed"
 
-  const health = PD.createHealthMonitor(adapter);
+  // Health monitoring is diagnostics, not detection, and it must never be able
+  // to cost more than it reports. This runs at load time, above the message
+  // listener at the bottom of the file, so anything thrown here would leave a
+  // content script that has already set __baitwatchScannerLoaded — blocking the
+  // popup's re-injection fallback — with no listener, no scan and no warnings:
+  // the feature that exists to announce a silent failure would have caused a
+  // total one. Degrade to a monitor that admits it knows nothing instead.
+  let health;
+  try {
+    health = PD.createHealthMonitor(adapter);
+  } catch (err) {
+    console.warn("[BaitWatch] adapter health monitoring unavailable:", err);
+    health = { status: "unknown", record: () => "unknown" };
+  }
 
   let settings = null;
   let enabled = true;

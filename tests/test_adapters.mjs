@@ -194,6 +194,27 @@ let genericStatus;
 for (let i = 0; i < 10; i++) genericStatus = genericMonitor.record(0, { now: i * 60000 });
 check("the generic adapter never reports a breakage", genericStatus === "unknown");
 
+// content/scanner.js builds the monitor at load time, above the point where it
+// registers its message listener, so a monitor that throws on an unexpected
+// adapter would take auto-scan, warning rendering and the popup's page scan
+// down with it. An adapter with no `landmarks` field — an older injected copy
+// of adapters.js looks exactly like this — must degrade to "unknown", not throw.
+let legacy;
+try {
+  legacy = PD.createHealthMonitor({ name: "legacy", selectors: [] });
+} catch (err) {
+  legacy = err;
+}
+check(
+  "an adapter with no landmarks field yields a monitor rather than throwing",
+  Boolean(legacy) && typeof legacy.record === "function",
+  String(legacy)
+);
+check(
+  "and that monitor stays at unknown instead of accusing anyone",
+  legacy?.record?.(0, { now: 99000 }) === "unknown"
+);
+
 /* ---------------------------------- report --------------------------------- */
 
 const total = passed + failures.length;

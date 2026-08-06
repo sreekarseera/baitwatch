@@ -15,6 +15,9 @@ Layers 1-3 need only Python + Node. Layer 4 additionally needs Chrome and
 `pip install websocket-client`; it is skipped with a clear message if either
 is missing, rather than failing the run.
 
+Layer 4 owns two fixed local ports. Set BAITWATCH_CDP_PORT / BAITWATCH_PAGES_PORT
+to move them when two checkouts have to be tested at once.
+
     python3 tests/run_all.py
     python3 tests/run_all.py --no-browser
 """
@@ -22,6 +25,7 @@ is missing, rather than failing the run.
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -36,8 +40,8 @@ EXTENSION = os.path.join(REPO, "extension")
 CHROME = os.environ.get(
     "CHROME_BIN", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 )
-CDP_PORT = 9223
-PAGES_PORT = 8791
+CDP_PORT = int(os.environ.get("BAITWATCH_CDP_PORT", 9223))
+PAGES_PORT = int(os.environ.get("BAITWATCH_PAGES_PORT", 8791))
 
 GREEN, RED, YELLOW, DIM, RESET = "\033[32m", "\033[31m", "\033[33m", "\033[2m", "\033[0m"
 
@@ -93,15 +97,51 @@ PHISH_PAGE = """<!doctype html>
 """
 
 
-def wait_for_cdp(timeout=25):
+def port_is_taken(port):
+    """True if something is already listening on the loopback port."""
+    with socket.socket() as probe:
+        probe.settimeout(0.5)
+        return probe.connect_ex(("127.0.0.1", port)) == 0
+
+
+def wait_for_cdp(chrome, timeout=25):
     deadline = time.time() + timeout
     while time.time() < deadline:
+        # If Chrome died, no amount of waiting will produce a port, and the one
+        # that eventually answers would not be ours.
+        if chrome.poll() is not None:
+            return None
         try:
             with urllib.request.urlopen(f"http://localhost:{CDP_PORT}/json/version", timeout=1) as r:
                 return json.load(r)["webSocketDebuggerUrl"]
         except (urllib.error.URLError, OSError, KeyError):
             time.sleep(0.3)
     return None
+
+
+def wait_for_pages(server, token, timeout=15):
+    """Confirm the fixture server answering PAGES_PORT is the one we started.
+
+    Chrome refuses to start twice on one debugging port and http.server exits
+    when its bind fails, but neither says so where this test can see it: the
+    launch is fire-and-forget and the server's stderr goes to /dev/null. A run
+    that quietly adopted a neighbour's browser and a neighbour's fixtures would
+    report on that neighbour's extension, and the failures it printed would
+    belong to code that is not being tested. The token is per-run, so fetching
+    it back proves these fixtures are the ones written above.
+    """
+    deadline = time.time() + timeout
+    url = f"http://127.0.0.1:{PAGES_PORT}/{token}"
+    while time.time() < deadline:
+        if server.poll() is not None:
+            return False
+        try:
+            with urllib.request.urlopen(url, timeout=1) as r:
+                if r.read().decode("utf-8").strip() == token:
+                    return True
+        except (urllib.error.URLError, OSError):
+            time.sleep(0.2)
+    return False
 
 
 def browser_smoke():
@@ -122,6 +162,19 @@ def browser_smoke():
     sys.path.insert(0, TESTS)
     from cdp import CDP, attach, evaluate  # noqa: E402
 
+    # Both ports have to be ours. Anything already holding one — a stray Chrome
+    # from an interrupted run, a second checkout being tested in parallel —
+    # would be silently measured in this extension's place.
+    for label, port, env in (
+        ("Chrome's debugging port", CDP_PORT, "BAITWATCH_CDP_PORT"),
+        ("the fixture server's port", PAGES_PORT, "BAITWATCH_PAGES_PORT"),
+    ):
+        if port_is_taken(port):
+            print(f"{RED}FAIL{RESET}  {label} ({port}) is already in use.")
+            print(f"{DIM}      Something else is listening there, and this test would drive it")
+            print(f"      instead of the extension under test. Stop it, or set {env}.{RESET}")
+            return False
+
     pages_dir = tempfile.mkdtemp(prefix="baitwatch-pages-")
     with open(os.path.join(pages_dir, "scam.html"), "w", encoding="utf-8") as f:
         f.write(SCAM_PAGE)
@@ -129,6 +182,10 @@ def browser_smoke():
         f.write(CLEAN_PAGE)
     with open(os.path.join(pages_dir, "phish.html"), "w", encoding="utf-8") as f:
         f.write(PHISH_PAGE)
+
+    token = f"run-{os.getpid()}-{time.time_ns()}.txt"
+    with open(os.path.join(pages_dir, token), "w", encoding="utf-8") as f:
+        f.write(token)
 
     server = subprocess.Popen(
         [sys.executable, "-m", "http.server", str(PAGES_PORT), "--bind", "127.0.0.1"],
@@ -173,7 +230,12 @@ def browser_smoke():
 
     cdp = None
     try:
-        ws_url = wait_for_cdp()
+        if not wait_for_pages(server, token):
+            print(f"{RED}FAIL{RESET}  the fixture server on {PAGES_PORT} never served this "
+                  f"run's own pages")
+            return False
+
+        ws_url = wait_for_cdp(chrome)
         if not ws_url:
             print(f"{RED}FAIL{RESET}  Chrome never exposed a debugging port")
             return False
