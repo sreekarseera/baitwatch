@@ -3,7 +3,7 @@
 Where the project stands and what is worth doing next. For how it works, see
 the root [`README.md`](../README.md); this file is the running log.
 
-Last updated **2026-08-05**.
+Last updated **2026-08-06**.
 
 ## Current state
 
@@ -13,7 +13,7 @@ Last updated **2026-08-05**.
 | Archive | `github.com/sreekarseera/baitwatch-archive` (private, the original 32-commit history) |
 | Detection | 21 heuristics + URL analysis + brand impersonation + on-device classifier |
 | Model | 3,248 rows, 95.9% validation, 94.8% ±1.7% five-fold CV, 6,000 terms, 262 KB |
-| Tests | 164 engine checks, model parity, 5 accuracy gates, 15 browser checks |
+| Tests | 191 engine checks, model parity, 5 accuracy gates, 15 browser checks |
 
 Measured accuracy, from `node tests/test_benchmark.mjs`:
 
@@ -24,6 +24,38 @@ Measured accuracy, from `node tests/test_benchmark.mjs`:
 | targeted scams missed | 4.00% |
 | Hinglish/Hindi scams missed | 5.71% |
 | false alarms on ordinary Hinglish | 0/21 |
+
+## 2026-08-06
+
+**Unicode confusables** (`tools/build_confusables.py`). The fold table was two
+hand-picked maps that had drifted apart — nine Cyrillic letters and ten Greek
+in `lib/text.js`, fourteen and ten in `engine/urls.js` — so an attacker only
+had to reach one letter further down the alphabet. Both are gone; there is now
+one `foldConfusables()` in `lib/text.js` backed by a generated table, the same
+way `psl-data.js` replaced the hand-rolled suffix list.
+
+273 of the source file's 6,565 mappings survive, 3.2 KB. The filters are the
+interesting part: the target has to be a *single ASCII letter*, which throws
+out the majority — Unicode's prototype for Greek epsilon is `ꞓ` and for
+Cyrillic ve is `ʙ`, meaning those are confusable with each other and not with
+the ASCII letter, and folding them to `e`/`b` would have been a guess. Anything
+NFKD already handles goes too, which is where the size went: 897 mappings, most
+of them the thirteen styled Latin alphabets in the Mathematical Alphanumeric
+block, were free all along. And the scripts are allowlisted rather than taken
+wholesale — Devanagari most pointedly, because the Hindi rules match it
+literally against `normalize()`'d text and a fold would have switched a whole
+language's rules off in silence.
+
+Caught now that were not before: `gσσgle.com`, `ѡһatsapp.com`, `γσutubҽ.com`.
+Not one of them was within edit distance either — dropping the letter the old
+table could not read left `ggle`, `atsapp`, `utub`. The benchmark did not move
+by a single message in any of the five gates, which is the number that
+mattered: the risk in widening a fold is a false positive, not a miss.
+
+The fold also had to move *before* the lowercase rather than after it. Unicode's
+twins are case-sensitive — Cyrillic `В` is identical to Latin `B` while `в` is
+not identical to `b` — and folding a lowercased string throws that away, which
+showed up as a pile of mappings claiming both `i` and `l` for the same letter.
 
 ## 2026-08-05
 
@@ -114,9 +146,6 @@ product decision than a technical one.
 
 **Smaller, when convenient**
 
-- Full Unicode confusables. The fold table is hand-picked Cyrillic and Greek
-  letters with exact Latin twins; Unicode defines thousands more in
-  `confusables.txt`.
 - Adapter resilience. Gmail and WhatsApp selectors break without notice and
   nothing detects it — auto-scan just goes quiet.
 - Structural login-form checks that stand alone. Off-site credential POST is

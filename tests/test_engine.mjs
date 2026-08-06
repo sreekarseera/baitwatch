@@ -24,6 +24,8 @@ const { analyzeLocal, shouldEscalate, VERDICT } = await import(join(ext, "engine
 const { analyzeUrls, editDistance, registrableDomain } = await import(join(ext, "engine", "urls.js"));
 const { analyzeHeuristics } = await import(join(ext, "engine", "heuristics.js"));
 const { punycodeToUnicode } = await import(join(ext, "lib", "punycode.js"));
+const { normalize } = await import(join(ext, "lib", "text.js"));
+const { CONFUSABLES } = await import(join(ext, "lib", "confusables-data.js"));
 
 let passed = 0;
 const failures = [];
@@ -335,6 +337,145 @@ check(
   "folding does not misfire on real domains",
   !realDomains.signals.some((s) => s.id === "lookalike_domain"),
   `fired: ${realDomains.signals.map((s) => s.id).join(", ") || "nothing"}`
+);
+
+/* ------------------------- full Unicode confusables ------------------------ */
+// The fold table used to be nine Cyrillic letters and ten Greek ones, picked by
+// hand, and every domain below walked straight past it — the attacker only had
+// to reach one letter further down the alphabet. The table is now derived from
+// Unicode's own confusables data (tools/build_confusables.py).
+//
+// Each of these lands on the brand's skeleton *exactly*, which is the strongest
+// branch of the lookalike check. The old table did not reach them even by edit
+// distance: dropping the letter it could not read left "ggle", "atsapp" and
+// "utub", all two or more edits away from the brand.
+for (const [name, url, brand] of [
+  ["greek sigma read as o", "http://gσσgle.com/", "Google"],
+  ["cyrillic omega and shha", "http://ѡһatsapp.com/", "Facebook"],
+  ["greek, cyrillic and latin in one label", "http://γσutubҽ.com/", "Google"],
+  ["armenian", "http://ոetflix.com/", "Netflix"],
+  ["coptic", "http://ⲣaypal.com/", "PayPal"],
+  ["cherokee", "http://ꮯhase.com/", "Chase"],
+]) {
+  const folded = analyzeUrls("", [url]);
+  const signal = folded.signals.find((s) => s.id === "lookalike_domain");
+  check(
+    `a confusable outside the old hand-picked table is caught (${name})`,
+    signal?.brand === brand,
+    `${url} fired: ${folded.signals.map((s) => s.id).join(", ") || "nothing"}`
+  );
+}
+
+// Caught as an exact homoglyph, not as a near-miss typo. The distinction is
+// what the user is told: the warning has to say the address is built from
+// characters chosen to read as the brand, and show both spellings.
+const foldedDetail = analyzeUrls("", ["http://ѡһatsapp.com/"]).signals.find(
+  (s) => s.id === "lookalike_domain"
+);
+check(
+  "the widened fold still reports the domain as it renders, and the real address",
+  foldedDetail.detail.includes("ѡһatsapp.com") &&
+    foldedDetail.detail.includes("xn--") &&
+    foldedDetail.detail.includes("whatsapp.com"),
+  foldedDetail.detail
+);
+
+// These matter more than the six cases above. Folding whole scripts toward
+// Latin would recreate the failure this project already shipped once — treating
+// all punycode as suspicious flagged every legitimate German, Russian, Chinese
+// and Indian address — only from a new direction, by making an ordinary word in
+// another alphabet skeleton onto a brand. A domain written wholly in its own
+// script has to stay unremarkable however many of its letters have acquired a
+// Latin reading.
+for (const [name, url] of [
+  ["greek", "https://παράδειγμα.gr/"],
+  ["russian", "https://правительство.рф/"],
+  ["russian bank", "https://сбербанк.рф/"],
+  ["armenian", "https://օրինակ.հայ/"],
+  ["arabic", "https://السعودية.sa/"],
+  ["thai", "https://กรุงเทพ.th/"],
+  ["chinese", "https://中国政府.cn/"],
+  ["german", "https://zürich.ch/"],
+  ["danish", "https://århus.dk/"],
+]) {
+  const idn = analyzeUrls("", [url]);
+  check(
+    `a legitimate internationalized domain is not read as a brand (${name})`,
+    !idn.signals.some((s) => s.id === "lookalike_domain") && idn.score < 1.0,
+    `scored ${idn.score}, fired: ${idn.signals.map((s) => s.id).join(", ") || "nothing"}`
+  );
+}
+
+// The same question asked of message text rather than domains: ordinary
+// correspondence in another alphabet passes through normalize() before every
+// heuristic sees it, so a fold that turned it into plausible English would
+// warn the wrong people about the wrong thing.
+for (const [name, message] of [
+  ["russian", "Здравствуйте! Напоминаю, что собрание перенесено на среду в 14:00. Пожалуйста, подтвердите участие."],
+  ["greek", "Καλημέρα, το ραντεβού μας μετατέθηκε για την Πέμπτη στις έντεκα. Πες μου αν σε βολεύει."],
+  ["armenian", "Բարև, վաղվա հանդիպումը տեղափոխվել է ժամը երկուսին։ Խնդրում եմ հաստատել։"],
+  ["chinese", "你好，明天的会议改到下午三点，请确认你是否方便参加。"],
+  ["hindi", "नमस्ते, कल की मीटिंग दो बजे कर सकते हैं क्या? मुझे एक बजे दूसरा काम है।"],
+]) {
+  const ordinary = await analyzeLocal(message);
+  check(
+    `ordinary ${name} correspondence is not flagged`,
+    ordinary.verdict === VERDICT.SAFE,
+    `scored ${ordinary.score}, fired: ${ordinary.reasons.map((r) => r.id).join(", ") || "nothing"}`
+  );
+}
+
+// Devanagari is excluded from the table on purpose, and this is why: the Hindi
+// and Hinglish rules in heuristics.js match it literally, against normalize()'d
+// text. A fold would switch a whole language's rules off silently.
+const devanagari = "आपका खाता बंद हो जाएगा, तुरंत ओटीपी भेजें";
+check(
+  "normalize() leaves Devanagari exactly as it was",
+  normalize(devanagari) === devanagari,
+  `became ${JSON.stringify(normalize(devanagari))}`
+);
+
+// The contract the rest of the engine is written against, stated where a
+// regeneration of the table would break it. Both halves are load-bearing: the
+// first is how "acc0unt" reaches a keyword rule, and the second is why no
+// heuristic may ever match `\d` (docs/PROGRESS.md says the same).
+check(
+  "leetspeak digits still fold onto letters",
+  normalize("Sh4re your 0TP c0de") === "share your otp code",
+  JSON.stringify(normalize("Sh4re your 0TP c0de"))
+);
+check(
+  "which is why a rule can never match a digit",
+  normalize("Pay Rs 8000 by 24 March") === "pay rs 8ooo by 2a march",
+  JSON.stringify(normalize("Pay Rs 8000 by 24 March"))
+);
+
+// Ordinary Latin text has to survive untouched. A table that folded Latin into
+// anything else would be worse than no table at all — every keyword rule reads
+// the output of this function.
+const pangram = "the quick brown fox jumps over the lazy dog";
+check(
+  "plain Latin text passes through the fold unchanged",
+  normalize(pangram) === pangram,
+  JSON.stringify(normalize(pangram))
+);
+
+// Structural guards on the generated table itself, so a regeneration that
+// widens it too far fails here rather than in the field.
+check(
+  "every mapping folds a non-ASCII character onto a single ASCII letter",
+  [...CONFUSABLES].every(([from, to]) => from.codePointAt(0) > 127 && /^[A-Za-z]$/.test(to)),
+  [...CONFUSABLES]
+    .filter(([from, to]) => from.codePointAt(0) <= 127 || !/^[A-Za-z]$/.test(to))
+    .map(([from, to]) => `${from}->${to}`)
+    .join(", ")
+);
+const PROTECTED_SCRIPTS =
+  /[\p{Script=Devanagari}\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Thai}\p{Script=Bengali}\p{Script=Tamil}\p{Script=Telugu}]/u;
+check(
+  "no script the engine still has to read was folded",
+  ![...CONFUSABLES.keys()].some((ch) => PROTECTED_SCRIPTS.test(ch)),
+  [...CONFUSABLES.keys()].filter((ch) => PROTECTED_SCRIPTS.test(ch)).join(", ")
 );
 
 const dedup = analyzeUrls("see http://bit.ly/a", ["http://bit.ly/a", "http://bit.ly/b"]);

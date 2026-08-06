@@ -105,7 +105,10 @@ reaches an extension as `xn--aypal-uye.com`, because that is what `new URL()`
 returns — so folding runs on an ASCII envelope and finds nothing. With RFC 3492
 decoding in front of it (`lib/punycode.js`), the Cyrillic `р` folds onto Latin
 `p` like any other homoglyph and the warning can name the brand instead of
-muttering about character sets.
+muttering about character sets. The fold table itself is derived from Unicode's
+`confusables.txt` (`tools/build_confusables.py`), so it reaches the letters a
+hand-written list stops short of — Greek sigma for `o`, Cyrillic omega for `w`
+— rather than only the ones someone thought to type out.
 
 Punycode on its own is not the signal, though. A domain written wholly in
 Cyrillic, Han, or Devanagari is just a domain in that language; treating all of
@@ -255,9 +258,9 @@ extension/
   background/  service worker — the only place analysis runs
   popup/       manual check, history, sender lists
   options/     settings, API key, model info
-  lib/         storage, text utilities, punycode, CSV export
+  lib/         storage, text utilities, punycode, confusables table, CSV export
 training/      corpus builder, datasets, trainer, JSON exporter, icons
-tools/         build script for the public suffix list
+tools/         build scripts for the public suffix list and Unicode confusables
 tests/         parity, engine, accuracy benchmark, browser smoke
 ```
 
@@ -269,6 +272,12 @@ BaitWatch is MIT licensed — see [`LICENSE`](LICENSE).
 List](https://publicsuffix.org/), which is licensed under MPL-2.0. That license
 covers the data file alone and does not extend to the rest of the project.
 Regenerate it with `python3 tools/build_psl.py`.
+
+`extension/lib/confusables-data.js` is derived from [Unicode's confusables
+data](https://www.unicode.org/Public/security/latest/confusables.txt) (UTS #39),
+used under the [Unicode Terms of Use](https://www.unicode.org/terms_of_use.html).
+Regenerate it with `python3 tools/build_confusables.py`; the script explains
+which mappings it keeps and, more importantly, which it refuses to.
 
 ## Where it stands
 
@@ -301,10 +310,16 @@ what it measured, and what is worth doing next.
 - **Transliteration has no fixed spelling.** "bhejiye", "bhejo" and "bhej do"
   are one word, and the rules match a stem list rather than anything
   exhaustive. Spellings nobody thought of will be missed.
-- **Homoglyph folding is a hand-picked table, not the full confusables set.**
-  The Cyrillic and Greek letters with exact Latin twins are covered, which is
-  where the abuse concentrates, but Unicode defines thousands more. Importing
-  Unicode's own `confusables.txt` would make this exhaustive.
+- **Homoglyph folding covers the scripts built from Latin letterforms, not
+  every script.** The table comes from Unicode's `confusables.txt`, but only
+  the mappings that fold onto a single ASCII letter and only from an
+  allowlisted set of scripts — Latin, Greek, Coptic, Cyrillic, Armenian, and
+  the alphabets designed from Latin type (Cherokee, Lisu, Deseret, Osage).
+  Devanagari, Arabic, Hebrew, Thai, Han, Kana and Hangul are excluded on
+  purpose: their confusables are shape coincidences rather than twins, and
+  Devanagari specifically has to survive intact because the Hindi rules match
+  it literally. A lookalike built from one of those scripts is caught by the
+  mixed-script signal instead of by name.
 - **Adapters are selector-based.** Gmail and WhatsApp change their DOM without
   notice; if auto-scan goes quiet on a site, the selectors in
   `extension/content/adapters.js` are the first place to look.
