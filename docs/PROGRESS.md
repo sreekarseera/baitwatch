@@ -3,7 +3,7 @@
 Where the project stands and what is worth doing next. For how it works, see
 the root [`README.md`](../README.md); this file is the running log.
 
-Last updated **2026-08-05**.
+Last updated **2026-08-06**.
 
 ## Current state
 
@@ -12,8 +12,8 @@ Last updated **2026-08-05**.
 | Repo | `github.com/sreekarseera/baitwatch` (public, MIT) |
 | Archive | `github.com/sreekarseera/baitwatch-archive` (private, the original 32-commit history) |
 | Detection | 21 heuristics + URL analysis + brand impersonation + on-device classifier |
-| Model | 3,248 rows, 95.9% validation, 94.8% ±1.7% five-fold CV, 6,000 terms, 262 KB |
-| Tests | 164 engine checks, model parity, 5 accuracy gates, 15 browser checks |
+| Model | 3,248 rows, 95.9% validation, 94.8% ±1.6% five-fold CV, 6,000 terms, 262 KB |
+| Tests | 164 engine checks, model parity (tokens + predictions), 5 accuracy gates, 15 browser checks |
 
 Measured accuracy, from `node tests/test_benchmark.mjs`:
 
@@ -24,6 +24,73 @@ Measured accuracy, from `node tests/test_benchmark.mjs`:
 | targeted scams missed | 4.00% |
 | Hinglish/Hindi scams missed | 5.71% |
 | false alarms on ordinary Hinglish | 0/21 |
+
+## 2026-08-06
+
+**The tokenizer can read Devanagari now. The model still cannot.** Both halves
+of that are the result; reporting only the first would be a lie by omission.
+
+scikit-learn's default `token_pattern` is `(?u)\b\w\w+\b`, and `\w` excludes
+Unicode Marks. Devanagari vowel signs are Marks, so a word is a run of word
+characters interrupted by characters that are not: `"खाता"` tokenized to
+nothing at all and `"आपका"` to the fragment `"आपक"`. The model was reading
+mangled consonant skeletons of whatever the user actually wrote.
+
+Both sides now use `\w[\w<Indic marks>]+` — `training/train_model.py` and
+`tokenize()` in `extension/lib/text.js`, the same explicit code point ranges
+written out per script in both files. Marks are *continuation* characters
+only, so they can extend a token that began on a letter but never start one,
+which is what makes the change provably invisible to Latin text. Verified by
+enumeration rather than argument: for every code point up to U+2FFFF,
+inserting it between two English words changes the token list only for the
+marks in that class. English weights were learned on unchanged input.
+
+Explicit ranges rather than `\p{M}`, on three grounds. Python's `re` has no
+`\p{M}` and the `regex` module cannot supply one here, because
+`TfidfVectorizer` compiles `token_pattern` with `re` — using it would mean a
+`tokenizer=` callable, which joblib pickles by reference, so `test_parity.py`
+could not load the model in a separate process without importing the trainer.
+`\p{M}` would also match the combining diacritics in decomposed Latin, which
+is exactly the silent English regression the change had to avoid. And `\p{M}`
+resolves against whichever Unicode version each runtime ships, so JavaScript
+and Python could disagree about a code point while both looked right. Literal
+ranges are the same set in both languages forever. No dependency was added,
+and the extension stays dependency-free.
+
+**The parity test could not have caught this, and now can.** It compared
+probabilities. A term with no weight is absent from the vector either way, so
+two tokenizers disagreeing about every Devanagari word return the same number
+and pass — which is how the bug survived. It now compares token lists too,
+taking the tokenizer out of the *fitted* vectorizer so what is checked is the
+pattern baked into the shipped artifact. Confirmed to fail when the old
+pattern is put back: 30 of 3,280 inputs diverge. Sixteen new probes cover
+Devanagari, mixed Devanagari/Latin, other Indic scripts, and decomposed Latin.
+
+**And the honest part.** Every measured number is unchanged:
+
+| | before | after |
+|---|---|---|
+| validation accuracy | 95.85% | 95.85% |
+| five-fold CV | 94.80% ±1.66% | 94.77% ±1.59% |
+| legitimate mail flagged | 0.73% | 0.73% |
+| …called *dangerous* | 0.18% | 0.18% |
+| targeted scams missed | 4.00% | 4.00% |
+| Hinglish/Hindi scams missed | 5.71% | 5.71% |
+| …Devanagari alone | 0/10 | 0/10 |
+| false alarms on ordinary Hinglish | 0/21 | 0/21 |
+
+Not one Devanagari term reaches the vocabulary, before or after. The corpus
+has 16 Devanagari rows in 3,248. `min_df=3` leaves 10 Hindi terms of 127, and
+`max_features=6000` — which ranks by corpus-wide frequency — then drops all
+ten. The model abstains on all 16 rows exactly as it did before, on zero known
+terms. Raising the cap to keep them would mean shipping a 1 MB model to gain
+ten Hindi function words learned from ten scam rows and six legitimate ones,
+which is memorising, not learning.
+
+So: the mechanism is fixed and the outcome is not. A tokenizer producing terms
+the model has no weights for is a precondition for reading Hindi, not the
+ability to read it. What is left is a dataset problem — more Devanagari rows —
+and it is now the only thing in the way.
 
 ## 2026-08-05
 
@@ -100,12 +167,14 @@ a *new* feature, not by looking for bugs.
 
 ## Next
 
-**The model cannot see Devanagari.** scikit-learn's default token pattern
-splits at Unicode Marks, and Devanagari vowel signs are Marks, so `"खाता"`
-tokenizes to nothing. Parity passes because Python and JavaScript are wrong
-identically. Hindi-script messages currently rest on the rule layer alone.
-Fixing it means changing the token pattern on **both** sides in lockstep and
-retraining — the parity test is the safety net, and it must stay green.
+**Devanagari rows for the corpus.** The tokenizer reads Hindi script now; the
+model has no vocabulary for it, because 16 rows out of 3,248 cannot survive
+`min_df=3` and a 6,000-feature cap. That is the only thing still in the way,
+and it is a data problem rather than a code one. A few hundred Devanagari rows
+would put Hindi terms in the vocabulary on their own merits, without touching
+vectorizer settings tuned for everything else. They have to be *collected*,
+though — writing them to match the benchmark would be grading the corpus
+against itself.
 
 **Opt-in network features** — shortener resolution and a URLhaus feed (CC0).
 Both break "nothing leaves your computer", so they need one consent surface

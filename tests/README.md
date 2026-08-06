@@ -13,9 +13,18 @@ Three layers, cheapest first. `python3 tests/run_all.py` runs all of them.
 `extension/engine/model.js` re-implements scikit-learn's TF-IDF vectorizer and
 logistic regression in the browser. If its tokenizer drifts from Python's by one
 character class, predictions stay *plausible* and become *wrong*, with nothing at
-runtime to notice. `test_parity.py` runs the entire dataset plus 15 adversarial
-strings (Devanagari, CJK, emoji, leetspeak, underscores) through both and fails
-on any disagreement above 1e-4.
+runtime to notice. `test_parity.py` runs the entire dataset plus 32 adversarial
+strings (Devanagari, mixed Devanagari/Latin, other Indic scripts, decomposed
+Latin, CJK, emoji, leetspeak, underscores) through both and fails on any
+disagreement above 1e-4.
+
+It also compares the token lists themselves, which is not redundant. A term the
+model has no weight for is absent from the vector either way, so two tokenizers
+can disagree about every word of a script the corpus barely covers and still
+return identical probabilities — that is precisely how the Devanagari tokenizer
+bug went unnoticed. The tokenizer is taken out of the *fitted* vectorizer, so
+what is compared is the pattern baked into the shipped artifact rather than a
+second copy of it.
 
 Re-run it after any change to `extension/lib/text.js`, `extension/engine/model.js`,
 or the vectorizer settings in `training/train_model.py`.

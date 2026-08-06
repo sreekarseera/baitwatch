@@ -18,11 +18,12 @@ import { normalize } from "../lib/text.js";
 // ones, against 3.6% for English.
 //
 // Both scripts can be covered here because heuristics run regexes over
-// normalize()'d text and never tokenize. That distinction is load-bearing: the
-// tokenizer in lib/text.js cannot see Devanagari at all (its vowel signs are
-// Unicode Marks, which \w excludes), so the *model* layer is blind to Hindi
-// script even though these rules are not. scikit-learn's default tokenizer has
-// the same blind spot, which is why parity still passes.
+// normalize()'d text and never tokenize, which is what let this layer cover
+// Devanagari back when the tokenizer could not. The tokenizer reads it now
+// (see INDIC_MARKS in lib/text.js), but the model layer is still the one that
+// contributes nothing on Hindi script — the corpus has too few Devanagari rows
+// for a single Hindi term to reach the vocabulary. These rules remain the only
+// thing standing between a Hindi-script scam and the user.
 //
 // Transliteration has no agreed spelling — "bhejiye", "bhejo", "bhej do" are
 // one word — so stems are used where the stem is distinctive enough to be safe

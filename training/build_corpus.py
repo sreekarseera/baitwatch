@@ -25,9 +25,13 @@ The curated rows are kept, not replaced. They carry the India-specific scams
 (UPI collect-requests, digital-arrest threats, KYC expiry) that a 2002 American
 corpus has never heard of, and those are the ones this project exists for.
 curated-hinglish.csv adds the same tactics in Roman-script Hindi and
-Devanagari. Note that the Devanagari rows do almost nothing for the model —
-the tokenizer cannot see Hindi script (see extension/lib/text.js) — they are
-here for the rule layer and the benchmark.
+Devanagari. The Devanagari rows still do almost nothing for the model, but the
+reason has changed and is now worth acting on. It used to be the tokenizer,
+which could not see Hindi script at all; that is fixed. It is now simply that
+there are 16 of them against 3,248 rows, so no Hindi term is in three
+documents and survives the 6,000-feature cap, and the model has no weight for
+a single one. They are here for the rule layer and the benchmark, and the fix
+is more Devanagari rows rather than another change to the vectorizer.
 
 Messages are redacted before they are written: headers are dropped entirely,
 and any address surviving in a body is replaced. The output goes into a public

@@ -724,13 +724,18 @@ check(
   `exonerating: ${hindiAction.exonerating.map((s) => s.id).join(", ") || "none"}`
 );
 
-// The tokenizer cannot see Devanagari — its vowel signs are Unicode Marks,
-// which \w excludes — so a Hindi message yields almost no known terms and a
-// probability just under 0.5. Letting that vote *subtracts* points from text
-// the model simply cannot read.
+// The tokenizer now reads Devanagari — its vowel signs are Unicode Marks and
+// used to split every word into unusable fragments — but the vocabulary still
+// has no Hindi in it, because 16 Devanagari rows in a 3,248-row corpus do not
+// survive min_df=3 and a 6,000-feature cap. So the terms are correct and the
+// model has no weight for any of them: it still yields almost no known terms
+// and a probability just under 0.5, which would *subtract* points from a
+// message it has no opinion about. The abstention is what keeps that from
+// happening, and it is load-bearing until the corpus carries enough Hindi to
+// learn from. Fixing the tokenizer was necessary for that and not sufficient.
 const hindiModel = await analyzeLocal("आपका खाता ब्लॉक हो गया है। तुरंत ओटीपी भेजिए।");
 check(
-  "the model abstains on text it cannot tokenize",
+  "the model abstains on text it has no vocabulary for",
   hindiModel.model.available === false,
   `available=${hindiModel.model.available}, p=${hindiModel.model.probability}`
 );
