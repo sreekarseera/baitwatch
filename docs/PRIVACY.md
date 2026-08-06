@@ -64,7 +64,7 @@ file that writes any of it is `extension/lib/storage.js`.
 | `blocklist` | Email addresses or numbers you pressed "Block" on, lowercased. |
 | `allowlist` | Senders you marked as safe, lowercased. |
 | `settings` | Your toggles — automatic scanning, which sites, how severe a verdict has to be before you are warned, the history cap — and, if you enabled the optional Claude tier, your Anthropic API key. |
-| `stats` | Three counters: messages checked, messages flagged, and calls made to the Claude API. Numbers only. |
+| `stats` | Three counters: messages checked, messages flagged, and Claude requests that returned a verdict. Numbers only. Requests that failed are not counted, so this is not a complete record of how often text was sent. |
 
 Two consequences worth being explicit about, because they follow from the design
 rather than from any promise:
