@@ -3,7 +3,7 @@
 // classifier has never seen, because the delivery mechanism (a hostile link)
 // changes far more slowly than the wording around it.
 
-import { extractUrls } from "../lib/text.js";
+import { extractUrls, foldConfusables } from "../lib/text.js";
 import { punycodeToUnicode } from "../lib/punycode.js";
 import { PSL_RULES, PSL_WILDCARDS, PSL_EXCEPTIONS } from "./psl-data.js";
 
@@ -170,22 +170,21 @@ function skeleton(domain) {
   // Decode first. A non-Latin lookalike reaches us as "xn--aypal-uye.com",
   // and folding an ASCII envelope accomplishes nothing — the characters this
   // function exists to catch are only visible on the other side of the decode.
-  return punycodeToUnicode(domain)
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[аеорсхуіѕӏјԁԛԝοαρεινκτυχ]/g, (ch) => ({
-      // Cyrillic
-      а: "a", е: "e", о: "o", р: "p", с: "c", х: "x", у: "y", і: "i", ѕ: "s",
-      ӏ: "l", ј: "j", ԁ: "d", ԛ: "q", ԝ: "w",
-      // Greek
-      ο: "o", α: "a", ρ: "p", ε: "e", ι: "i", ν: "v", κ: "k", τ: "t", υ: "u", χ: "x",
-    }[ch]))
-    .replace(/[01345]/g, (ch) => ({ "0": "o", "1": "l", "3": "e", "4": "a", "5": "s" }[ch]))
+  //
+  // The fold itself is the shared one in lib/text.js, backed by the full
+  // Unicode confusables table. This used to be a second hand-picked map that
+  // had drifted out of step with the one in text.js, and both of them stopped
+  // at the letters someone had thought to list: an attacker only had to reach
+  // for Greek sigma or Cyrillic omega to walk past both.
+  return foldConfusables(punycodeToUnicode(domain))
     // "rn" renders almost identically to "m" at normal size — "arnazon.com"
     // is a real and frequently-used registration. Folding it here rather than
     // leaning on edit distance matters because it costs two edits, which puts
     // it outside the tolerance short brand names are allowed.
     .replace(/rn/g, "m")
+    // Anything that survived the fold is a character with no Latin reading at
+    // all. Dropping it is what keeps a wholly non-Latin domain from being
+    // compared against a brand on the strength of two coincidental letters.
     .replace(/[^a-z.-]/g, "");
 }
 

@@ -72,7 +72,7 @@ one `training/train_model.py` prints: **94.77% ±1.59%** over 3,248 rows, with
 rows, so it flatters the model — it is a regression alarm, not a claim about
 accuracy on mail it has never seen.
 
-The corpus-wide false negative rate is 27.58%, and it is printed but not gated
+The corpus-wide false negative rate is 27.64%, and it is printed but not gated
 on purpose. It is dominated by 2002-era commercial advertising that the
 extension deliberately does not warn about; not warning you about a newsletter
 is the correct behaviour, so a limit on that number would be a limit on being
@@ -111,7 +111,7 @@ there is nowhere else for anything to go.
 | `notifications` | showing the verdict of a right-click scan |
 | `activeTab`, `scripting` | injecting the scanner into the current tab for *Scan this entire page*. `activeTab` is granted by Chrome only at the moment you click the extension, not ambiently |
 | content script on `<all_urls>` | the generic adapter has to already be present to read a message on a site with no dedicated adapter. It hands text to the extension's own service worker in the same browser process |
-| host permission `https://api.anthropic.com/` | the only remote origin this extension is able to reach at all, and only with the second opinion enabled |
+| host permission `https://api.anthropic.com/*` | the only remote origin this extension is able to reach at all, and only with the second opinion enabled |
 
 There is no `tabs` permission, so the extension cannot enumerate your open tabs
 or read their URLs. The whole-page scan works by asking the content script to
@@ -217,7 +217,10 @@ reaches an extension as `xn--aypal-uye.com`, because that is what `new URL()`
 returns — so folding runs on an ASCII envelope and finds nothing. With RFC 3492
 decoding in front of it (`lib/punycode.js`), the Cyrillic `р` folds onto Latin
 `p` like any other homoglyph and the warning can name the brand instead of
-muttering about character sets.
+muttering about character sets. The fold table itself is derived from Unicode's
+`confusables.txt` (`tools/build_confusables.py`), so it reaches the letters a
+hand-written list stops short of — Greek sigma for `o`, Cyrillic omega for `w`
+— rather than only the ones someone thought to type out.
 
 Punycode on its own is not the signal, though. A domain written wholly in
 Cyrillic, Han, or Devanagari is just a domain in that language; treating all of
@@ -374,12 +377,32 @@ extension/
   background/  service worker — the only place analysis runs
   popup/       manual check, history, sender lists
   options/     settings, API key, model info
-  lib/         storage, text utilities, punycode, CSV export
+  lib/         storage, text utilities, punycode, confusables table, CSV export
 training/      corpus builder, datasets, trainer, JSON exporter, icons
-tools/         build script for the public suffix list
+tools/         build scripts for the public suffix list and Unicode confusables
 tests/         parity, engine, adapter health, accuracy benchmark, browser smoke
 docs/          running progress log, plus archived V1 material
 ```
+
+## License
+
+BaitWatch is MIT licensed — see [`LICENSE`](LICENSE).
+
+`extension/engine/psl-data.js` is generated from the [Mozilla Public Suffix
+List](https://publicsuffix.org/), which is licensed under MPL-2.0. That license
+covers the data file alone and does not extend to the rest of the project.
+Regenerate it with `python3 tools/build_psl.py`.
+
+`extension/lib/confusables-data.js` is derived from [Unicode's confusables
+data](https://www.unicode.org/Public/security/latest/confusables.txt) (UTS #39),
+used under the [Unicode Terms of Use](https://www.unicode.org/terms_of_use.html).
+Regenerate it with `python3 tools/build_confusables.py`; the script explains
+which mappings it keeps and, more importantly, which it refuses to.
+
+## Where it stands
+
+[`docs/PROGRESS.md`](docs/PROGRESS.md) is the running log — what changed,
+what it measured, and what is worth doing next.
 
 ## Known limits
 
@@ -411,10 +434,16 @@ docs/          running progress log, plus archived V1 material
 - **Transliteration has no fixed spelling.** "bhejiye", "bhejo" and "bhej do"
   are one word, and the rules match a stem list rather than anything
   exhaustive. Spellings nobody thought of will be missed.
-- **Homoglyph folding is a hand-picked table, not the full confusables set.**
-  The Cyrillic and Greek letters with exact Latin twins are covered, which is
-  where the abuse concentrates, but Unicode defines thousands more. Importing
-  Unicode's own `confusables.txt` would make this exhaustive.
+- **Homoglyph folding covers the scripts built from Latin letterforms, not
+  every script.** The table comes from Unicode's `confusables.txt`, but only
+  the mappings that fold onto a single ASCII letter and only from an
+  allowlisted set of scripts — Latin, Greek, Coptic, Cyrillic, Armenian, and
+  the alphabets designed from Latin type (Cherokee, Lisu, Deseret, Osage).
+  Devanagari, Arabic, Hebrew, Thai, Han, Kana and Hangul are excluded on
+  purpose: their confusables are shape coincidences rather than twins, and
+  Devanagari specifically has to survive intact because the Hindi rules match
+  it literally. A lookalike built from one of those scripts is caught by the
+  mixed-script signal instead of by name.
 - **Adapters are selector-based.** Gmail and WhatsApp change their DOM without
   notice, and when they do, the selectors in `extension/content/adapters.js` are
   the first place to look. The extension no longer fails silently when this

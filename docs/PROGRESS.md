@@ -13,7 +13,7 @@ Last updated **2026-08-06**.
 | Archive | `github.com/sreekarseera/baitwatch-archive` (private, the original 32-commit history) |
 | Detection | 21 heuristics + URL analysis + brand impersonation + on-device classifier |
 | Model | 3,248 rows, 95.85% validation, 94.77% ±1.59% five-fold CV, 6,000 terms, 262 KB |
-| Tests | 164 engine checks, model parity (tokens + predictions), 5 accuracy gates, 15 browser checks |
+| Tests | 191 engine checks, model parity (tokens + predictions), 5 accuracy gates, 29 adapter checks, 18 browser checks |
 
 Measured accuracy, from `node tests/test_benchmark.mjs`:
 
@@ -26,6 +26,60 @@ Measured accuracy, from `node tests/test_benchmark.mjs`:
 | false alarms on ordinary Hinglish | 0/21 |
 
 ## 2026-08-06
+
+Five parallel workstreams, each in its own worktree, merged into
+`adapter-health`. Ordered below by how much they change what the extension
+actually does.
+
+**A rotted site adapter now announces itself** (`extension/content/adapters.js`,
+`scanner.js`). Gmail and WhatsApp rewrite their markup without notice, and when
+a selector rots, `collect()` returns an empty list — which is exactly what an
+empty inbox returns. Auto-scan went quiet and nothing anywhere noticed; the
+first sign of trouble would have been a scam that was never flagged.
+
+Each site adapter now declares `landmarks` alongside its message `selectors`:
+ARIA roles and structural ids that say the app rendered a conversation at all.
+They are deliberately drawn from a different layer of the markup than the
+selectors they vouch for, because a landmark is only evidence that a selector
+broke if it can still match when that selector cannot. Empty results on a page
+whose landmarks are present, sustained across three scans *and* ten seconds,
+mean the selectors have gone — the popup says so and the page console records
+it. Both thresholds are needed: Gmail paints its message list a beat before the
+bodies, so the first empty pass on a freshly opened thread is normal.
+
+The generic adapter declares no landmarks and reports `unknown` forever. On an
+arbitrary page, finding nothing message-shaped is the ordinary outcome, and a
+monitor that cries wolf gets ignored — which would leave the extension exactly
+as silent as it was before.
+
+**A privacy claim that can be false** (`engine.js:170`). Found while auditing
+the manifest, not yet fixed. When the Claude tier is on and the request fails,
+`analyze()` returns `{...local, cloudError}` with `tier` still `"on-device"`,
+so `popup.js` and `overlay.js` print "Checked entirely on your device — nothing
+left your computer" directly above "Second opinion unavailable". Text was sent
+to Anthropic and the interface says it was not. The same root cause makes
+`cloudCalls` undercount, so the counter that would expose it is wrong too.
+
+**Manifest** (`extension/manifest.json`). `web_accessible_resources` published
+the 262 KB model to every page on the web under `<all_urls>`; nothing in a
+content script reads it, so it was pure fingerprinting surface, and it is gone.
+`host_permissions` was `https://api.anthropic.com/` — a match pattern's path is
+significant and bare `/` matches only the root, not `/v1/messages`. The store
+description was 147 characters against a hard limit of 132, which rejects the
+upload rather than truncating it. The `tabs`-free design still holds: every
+declared permission is used, and the whole-page scan still works by asking the
+content script to report the address of the page it is already on.
+
+**The browser test layer was lying** (`tests/run_all.py`). It polled
+`localhost:9223` without checking it had reached the Chrome it launched, and
+`stderr=DEVNULL` swallowed the fixture server's bind failure — so anything else
+holding those ports produced a full set of plausible failures against perfectly
+good code. It now aborts if either port is occupied, verifies the fixture
+server is its own by fetching back a per-run token, and takes
+`BAITWATCH_CDP_PORT` / `BAITWATCH_PAGES_PORT`. Three checks were added that
+assert on the parsed model artifact directly rather than inferring it from a
+verdict, which is what actually proves the model still loads without the
+`web_accessible_resources` entry.
 
 **The tokenizer can read Devanagari now. The model still cannot.** Both halves
 of that are the result; reporting only the first would be a lie by omission.
@@ -91,6 +145,36 @@ So: the mechanism is fixed and the outcome is not. A tokenizer producing terms
 the model has no weights for is a precondition for reading Hindi, not the
 ability to read it. What is left is a dataset problem — more Devanagari rows —
 and it is now the only thing in the way.
+
+**Unicode confusables** (`tools/build_confusables.py`). The fold table was two
+hand-picked maps that had drifted apart — nine Cyrillic letters and ten Greek
+in `lib/text.js`, fourteen and ten in `engine/urls.js` — so an attacker only
+had to reach one letter further down the alphabet. Both are gone; there is now
+one `foldConfusables()` in `lib/text.js` backed by a generated table, the same
+way `psl-data.js` replaced the hand-rolled suffix list.
+
+273 of the source file's 6,565 mappings survive, 3.2 KB. The filters are the
+interesting part: the target has to be a *single ASCII letter*, which throws
+out the majority — Unicode's prototype for Greek epsilon is `ꞓ` and for
+Cyrillic ve is `ʙ`, meaning those are confusable with each other and not with
+the ASCII letter, and folding them to `e`/`b` would have been a guess. Anything
+NFKD already handles goes too, which is where the size went: 897 mappings, most
+of them the thirteen styled Latin alphabets in the Mathematical Alphanumeric
+block, were free all along. And the scripts are allowlisted rather than taken
+wholesale — Devanagari most pointedly, because the Hindi rules match it
+literally against `normalize()`'d text and a fold would have switched a whole
+language's rules off in silence.
+
+Caught now that were not before: `gσσgle.com`, `ѡһatsapp.com`, `γσutubҽ.com`.
+Not one of them was within edit distance either — dropping the letter the old
+table could not read left `ggle`, `atsapp`, `utub`. The benchmark did not move
+by a single message in any of the five gates, which is the number that
+mattered: the risk in widening a fold is a false positive, not a miss.
+
+The fold also had to move *before* the lowercase rather than after it. Unicode's
+twins are case-sensitive — Cyrillic `В` is identical to Latin `B` while `в` is
+not identical to `b` — and folding a lowercased string throws that away, which
+showed up as a pile of mappings claiming both `i` and `l` for the same letter.
 
 ## 2026-08-05
 
@@ -183,9 +267,6 @@ product decision than a technical one.
 
 **Smaller, when convenient**
 
-- Full Unicode confusables. The fold table is hand-picked Cyrillic and Greek
-  letters with exact Latin twins; Unicode defines thousands more in
-  `confusables.txt`.
 - Adapter resilience. Gmail and WhatsApp selectors break without notice and
   nothing detects it — auto-scan just goes quiet.
 - Structural login-form checks that stand alone. Off-site credential POST is
