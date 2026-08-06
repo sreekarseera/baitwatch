@@ -11,3 +11,7 @@ training/model/metrics.json
 # Downloaded corpus archives. build_corpus.py re-fetches them on demand;
 # dataset.csv is the committed, redacted output.
 training/corpus-cache/
+
+# Store upload zips. tools/package.py rebuilds them byte-identically from any
+# commit, so committing one would only ever go stale.
+dist/

@@ -2,12 +2,12 @@
   "manifest_version": 3,
   "name": "BaitWatch",
   "version": "2.0.0",
-  "description": "Catches scam and phishing messages as you read them. Runs on your device — nothing is sent anywhere unless you turn on the optional second opinion.",
+  "description": "Catches scam and phishing messages as you read them. Runs entirely on your device — nothing is sent anywhere by default.",
   "minimum_chrome_version": "116",
 
   "permissions": ["storage", "contextMenus", "notifications", "activeTab", "scripting"],
 
-  "host_permissions": ["https://api.anthropic.com/"],
+  "host_permissions": ["https://api.anthropic.com/*"],
 
   "action": {
     "default_popup": "popup/popup.html",
@@ -38,13 +38,6 @@
       "js": ["content/adapters.js", "content/overlay.js", "content/scanner.js"],
       "run_at": "document_idle",
       "all_frames": false
-    }
-  ],
-
-  "web_accessible_resources": [
-    {
-      "resources": ["engine/model-weights.json"],
-      "matches": ["<all_urls>"]
     }
   ],
 
