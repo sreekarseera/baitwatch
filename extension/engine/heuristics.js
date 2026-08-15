@@ -30,18 +30,49 @@ import { normalize } from "../lib/text.js";
 // on its own. "bhej" is; "kar" (do) would not be, and is never used alone.
 // ---------------------------------------------------------------------------
 const HI = {
-  // send / give / tell — the transmission verbs
-  send: "bhej\\w*|भेज\\w*|de\\s*do|दे\\s*दो",
+  // send / give / tell — the transmission verbs. "जमा" (deposit/submit) is
+  // how a fee gets sent, not a way of sending it, but the two read the same
+  // to whoever pays, so it belongs with the other transmission verbs.
+  send: "bhej\\w*|भेज\\w*|de\\s*do|दे\\s*दो|jama\\w*|जमा",
   tell: "bata(?:o|iye|ye|yein|na)|बता(?:ओ|इए|एं|ना)",
   enter: "daal(?:o|iye|ein|na)?|dal(?:o|iye|ein)|डाल(?:ो|िए|ें|ना)?",
   money: "pais[ae]|rupay[ae]?|rupees|rakam|राशि|पैस[ेा]|रुपय[ेा]|रकम",
-  account: "khat[ae]|खात[ेा]|account|खाता",
-  urgent: "turant|abhi|jald(?:i|ee)|foran|तुरंत|अभी|जल्दी|फ़?ौरन",
-  blocked: "band\\s*ho|block\\s*ho|suspend|nilambit|बंद\\s*हो|ब्लॉक|निलंबित|समाप्त",
-  fee: "shulk|शुल्क|फ़?ीस|charge|fee",
-  police: "cyber\\s*cell|साइबर\\s*सेल|cbi|सीबीआई|police|पुलिस|warrant|वारंट|giraftar|गिरफ़?्तार",
+  account: "khat[ae]|खात[ेा]|account|खाता|कार्ड|card",
+  // Split in two because every call site below needs \b around the Latin
+  // half only. JS's \b is an ASCII word-boundary — it is defined as a
+  // transition between \w ([A-Za-z0-9_]) and non-\w, and Devanagari
+  // characters are never \w, so `\b(?:तुरंत)\b` can never match: neither
+  // side of "तुरंत" is ever a \w character for \b to transition against.
+  // A single combined string wrapped in one \b, as this used to be, silently
+  // dropped every Devanagari alternative while looking like it covered both
+  // scripts. Verified empirically: /\b(?:अभी)\b/.test("अभी अस्पताल") is
+  // false; /अभी/.test(...) is true.
+  // "abhi"/"अभी" deliberately excluded from the Devanagari side: in English
+  // Hinglish it mostly appears as an imperative ("abhi bhejo"), but in
+  // Devanagari "अभी" just as often means "just now" describing something
+  // that already happened — "अभी 2,500 रुपये ट्रांसफर किए" is a bank
+  // reporting a completed transfer, not a demand. Keeping it flagged every
+  // legitimate "just now" notification as urgent.
+  urgentLatin: "turant|abhi|jald(?:i|ee)|foran",
+  urgentDevanagari: "तुरंत|जल्दी|फ़?ौरन",
+  blocked:
+    "band\\s*ho|block\\s*ho|suspend|nilambit|बंद\\s*हो|ब्लॉक|निलंबित|समाप्त|" +
+    "रोक(?:ा|ी|दिया)?|काम\\s*नहीं\\s*करेगा",
+  // ड्यूटी (duty) is how a customs/import charge is actually named in
+  // Devanagari SMS — "शुल्क" is formal-register Hindi that real scam
+  // messages use rarely.
+  fee: "shulk|शुल्क|फ़?ीस|charge|fee|duty|ड्यूटी|चार्ज|क्लियरेंस",
+  police:
+    "cyber\\s*cell|साइबर\\s*सेल|cbi|सीबीआई|police|पुलिस|warrant|वारंट|giraftar|गिरफ़?्तार|थाना|थाने|" +
+    "\\bed\\b|ईडी|फेमा|supreme\\s*court|सुप्रीम\\s*कोर्ट|money\\s*laundering|मनी\\s*लॉन्ड्रिंग|दूरसंचार",
   prize: "lotter[iy]|लॉटरी|jeet\\s*ga(?:ye|ya)|जीत\\s*ग(?:ए|या)|badhai|बधाई|inaam|इनाम",
   kyc: "kyc|केवाईसी",
+  // Parcel/courier vocabulary, Devanagari and Devanagari-spelled loanwords —
+  // delivery_redispatch_fee had no Hindi-script coverage at all before this.
+  // कस्टम(?!र) excludes "कस्टमर" (customer) — कस्टम (customs) is its own
+  // word but also happens to be the first four characters of the routine
+  // word for "customer", and a bare substring match can't tell them apart.
+  parcel: "parcel|package|courier|consignment|पार्सल|पैकेट|कूरियर|कोरियर|कस्टम(?!र)|कंसाइनमेंट",
 };
 
 const CREDENTIAL_NOUN_RE =
@@ -97,7 +128,11 @@ const RULES = [
     id: "gift_card_payment",
     weight: 3.0,
     why: "It asks for payment in gift cards. Gift cards are untraceable and are the single most common scam payment method — no legitimate business, agency, or manager collects payment this way.",
-    test: (t) => /\b(?:gift\s*card|itunes\s*card|steam\s*(?:card|wallet)|google\s*play\s*card|voucher\s*code|prepaid\s*card)\b/.test(t),
+    test: (t) =>
+      /\b(?:gift\s*card|itunes\s*card|steam\s*(?:card|wallet)|google\s*play\s*card|voucher\s*code|prepaid\s*card)\b/.test(t) ||
+      // "Google Play गिफ्ट कार्ड" — the brand stays in Latin script but the
+      // "gift card" itself is routinely spelled out in Devanagari.
+      /गिफ्ट\s*कार्ड|आइट्यून्स|स्टीम\s*कार्ड|वाउचर/.test(t),
   },
   {
     id: "crypto_transfer",
@@ -112,10 +147,10 @@ const RULES = [
     weight: 2.6,
     why: "It asks you to approve a UPI request or scan a QR code to *receive* money. Approving a UPI request or scanning a QR code always sends money out of your account — it never brings money in.",
     test: (t) =>
-      new RegExp(`\\b(?:upi|gpay|google\\s*pay|phonepe|paytm|bhim|qr\\s*code)\\b|यूपीआई|क्यूआर`).test(t) &&
+      new RegExp(`\\b(?:upi|gpay|google\\s*pay|phonepe|paytm|bhim|qr\\s*code)\\b|यूपीआई|क्यूआर|कलेक्ट\\s*रिक्वेस्ट`).test(t) &&
       new RegExp(
         `\\b(?:collect\\s*request|accept|approve|scan|enter\\s*(?:your\\s*)?pin|receive|refund|cashback)\\b` +
-        `|${HI.enter}|स्वीकार|स्कैन`
+        `|${HI.enter}|स्वीकार|स्कैन|एक्सेप्ट`
       ).test(t),
   },
   {
@@ -134,7 +169,7 @@ const RULES = [
     why: "It sets a countdown. Deadlines like this exist to stop you checking with someone before you act.",
     test: (t) =>
       /\b(?:within\s*\d+\s*(?:hour|hr|minute|min|day)|in\s*the\s*next\s*\d+\s*(?:hour|minute)|before\s*(?:midnight|today|tonight|it\s*expires)|expir(?:es|ing)\s*(?:today|soon|in)|last\s*(?:chance|warning)|final\s*(?:notice|warning|reminder)|immediately|right\s*away|act\s*now|urgent(?:ly)?|asap)\b/.test(t) ||
-      new RegExp(`\\b(?:${HI.urgent})\\b|आज\\s*रात|aaj\\s*raat`).test(t),
+      new RegExp(`\\b(?:${HI.urgentLatin})\\b|${HI.urgentDevanagari}|आज\\s*रात|aaj\\s*raat`).test(t),
   },
   {
     id: "threat_of_consequence",
@@ -142,7 +177,7 @@ const RULES = [
     why: "It threatens arrest, legal action, or a fine. Real agencies send written notices; they do not threaten you over email or chat.",
     test: (t) =>
       /\b(?:arrest(?:ed)?|legal\s*action|lawsuit|court|police|fir\b|warrant|prosecut(?:e|ion)|penalt(?:y|ies)|fine|seiz(?:e|ed|ure)|deport|jail|criminal\s*(?:case|charge))\b/.test(t) ||
-      new RegExp(`${HI.police}|मामला\\s*दर्ज|case\\s*darj`).test(t),
+      new RegExp(`${HI.police}|मामला\\s*दर्ज|case\\s*darj|थाना|थाने|चालान|जमानत`).test(t),
   },
   {
     id: "prize_or_windfall",
@@ -150,7 +185,15 @@ const RULES = [
     why: "It says you've won something you never entered, or money is waiting for you. Unsolicited winnings are a lure to collect your details or an upfront \"fee\".",
     test: (t) =>
       /\b(?:you(?:'ve| have)?\s*(?:been\s*)?(?:won|win|selected|chosen)|congratulations|lucky\s*winner|claim\s*your\s*(?:prize|reward|gift)|lottery|jackpot|unclaimed\s*(?:funds|money|refund)|inherit(?:ance|ed))\b/.test(t) ||
-      new RegExp(HI.prize).test(t),
+      new RegExp(HI.prize).test(t) ||
+      // Devanagari-spelled loanwords for the same "unexpected money is
+      // waiting" lure — refunds, reward points, cashback, and bonuses that
+      // were never earned, not the classic lottery framing. Gated on a
+      // nearby call to action: a bank routinely says "cashback credited,
+      // refund will arrive in 5 days" with nothing for the reader to do,
+      // and that has to read as the routine notice it is. The scam version
+      // always asks for a click, a claim, or a form.
+      new RegExp(`(?:रिफंड|रिवॉर्ड|बोनस|कैशबैक|पॉइंट्स)[^.!?]{0,45}(?:क्लेम|रिडीम|लिंक|apk|डाउनलोड|फॉर्म|वेरिफ|एक्सपायर|पिन)`).test(t),
   },
   {
     id: "advance_fee",
@@ -159,7 +202,11 @@ const RULES = [
     test: (t) =>
       /\b(?:processing\s*fee|clearance\s*fee|customs\s*(?:fee|duty|charge)|release\s*fee|registration\s*fee|handling\s*charge|small\s*(?:fee|amount)|refundable\s*deposit)\b/.test(t) ||
       // "processing fee bhejiye", "clearance shulk bharkar", "file charge 999"
-      new RegExp(`(?:${HI.fee})[^.!?]{0,25}(?:${HI.send}|bhar|भर|pay)|(?:file|delivery|clearance|processing)\\s*(?:${HI.fee})`).test(t),
+      new RegExp(`(?:${HI.fee})[^.!?]{0,25}(?:${HI.send}|bhar|भर|pay)|(?:file|delivery|clearance|क्लियरेंस|processing)\\s*(?:${HI.fee})`).test(t) ||
+      // Loan-advance-fee scams name the up-front cost without a fee word at
+      // all — "GST क्लियरेंस के लिए 750 रुपये", "स्टाम्प ड्यूटी" — the
+      // charge is identified by what it's for, next to a rupee amount.
+      new RegExp(`(?:लोन|loan)[^.!?]{0,60}(?:क्लियरेंस|स्टाम्प|clearance|stamp)[^.!?]{0,20}(?:${HI.money})`).test(t),
   },
   {
     id: "impersonated_authority",
@@ -167,7 +214,7 @@ const RULES = [
     why: "It claims to be from a bank, tax office, or support desk. Check by contacting them yourself using a number you already have — never one from the message.",
     test: (t) =>
       /\b(?:income\s*tax|irs\b|hmrc|customs|cyber\s*cell|trai\b|rbi\b|federal|government|microsoft\s*support|apple\s*support|tech\s*support|security\s*team|fraud\s*department)\b/.test(t) ||
-      new RegExp(`${HI.police}|bank\\s*se\\s*bol|बैंक\\s*से\\s*बोल|hr\\s*se\\s*bol`).test(t),
+      new RegExp(`${HI.police}|bank\\s*se\\s*bol|बैंक\\s*से\\s*बोल|hr\\s*se\\s*bol|कस्टम(?!र)|इनकम\\s*टैक्स|आयकर`).test(t),
   },
   {
     id: "secrecy_request",
@@ -179,11 +226,25 @@ const RULES = [
       new RegExp(`(?:kisi\\s*ko|police\\s*ko|किसी\\s*को|पुलिस\\s*को)\\s*(?:mat|nahi|मत|नहीं)`).test(t),
   },
   {
+    id: "sextortion_threat",
+    weight: 2.3,
+    why: "It threatens to share an intimate or embarrassing photo or video unless you pay. Paying does not make the threat stop — it confirms you will pay again.",
+    test: (t) =>
+      /\b(?:nude|naked|intimate|obscene|explicit|morphed?)\s*(?:video|photo|picture|pic)\b|screen\s*record(?:ed|ing)?/.test(t) ||
+      /न्यूड|नग्न|आपत्तिजनक|अश्लील/.test(t) ||
+      // A recording/photo mentioned near a threat to make it public — the
+      // generic shape covers both "your own video" and "your daughter's
+      // morphed photo" variants without needing a separate rule for each.
+      (/वीडियो|फोटो|तस्वीर|स्क्रीनशॉट|video|photo|screenshot/.test(t) &&
+        /वायरल|लीक|फैला|भेजने\s*से\s*पहले|भेज(?:ना|ूंगा|\s*दूंगा)|viral|leak(?:ed)?/.test(t)),
+  },
+  {
     id: "unexpected_attachment_or_install",
     weight: 1.6,
     why: "It wants you to install software or open an attachment to fix a problem. That software is how they take control of your device.",
     test: (t) =>
-      /\b(?:anydesk|teamviewer|quick\s*support|remote\s*(?:access|desktop)|install\s*(?:this|the)\s*app|download\s*(?:the\s*)?(?:apk|attachment|file)|enable\s*(?:macros|installation\s*from\s*unknown))\b/.test(t),
+      /\b(?:anydesk|teamviewer|quick\s*support|remote\s*(?:access|desktop)|install\s*(?:this|the)\s*app|download\s*(?:the\s*)?(?:apk|attachment|file)|enable\s*(?:macros|installation\s*from\s*unknown))\b/.test(t) ||
+      /रिमोट\s*एक्सेस|एनीडेस्क|टीमव्यूअर|apk\s*डाउनलोड|डाउनलोड\s*(?:करें|कीजिए)/.test(t),
   },
   {
     id: "boss_impersonation",
@@ -191,7 +252,10 @@ const RULES = [
     why: "Someone claiming to be your boss or a colleague is asking for money or data from an unfamiliar address. Verify on a channel you already trust before acting.",
     test: (t) =>
       /\b(?:this\s*is\s*(?:your\s*)?(?:ceo|manager|director|boss|hr)|i(?:'m| am)\s*(?:your\s*)?(?:ceo|manager|boss)|new\s*(?:number|email)[^.!?]{0,30}\b(?:this\s*is|it'?s)\b)/.test(t) ||
-      (/\b(?:ceo|manager|director|boss)\b/.test(t) && /\b(?:urgent|discreet|favou?r|right\s*now|quick\s*task)\b/.test(t)),
+      (/\b(?:ceo|manager|director|boss)\b/.test(t) && /\b(?:urgent|discreet|favou?r|right\s*now|quick\s*task)\b/.test(t)) ||
+      // "बॉस बोल रहा हूं" (this is your boss speaking) — the authority title
+      // is a Devanagari-spelled loanword even in an otherwise Hindi message.
+      (/बॉस|मैनेजर|डायरेक्टर/.test(t) && /बोल\s*रहा|बोल\s*रही|अर्जेंट|जल्दी/.test(t)),
   },
   {
     id: "payment_detail_change",
@@ -199,7 +263,9 @@ const RULES = [
     why: "It asks to redirect a payment to different bank details. This is how invoice-redirection fraud works — always confirm by phone using a number you already have.",
     test: (t) =>
       /\b(?:updated?|new|changed?|different)\s*(?:bank(?:ing)?|account|payment|remittance|wire)\s*(?:details|information|info|number)\b/.test(t) ||
-      /\bchange\s*(?:the\s*)?(?:bank|payment)\s*details\b/.test(t),
+      /\bchange\s*(?:the\s*)?(?:bank|payment)\s*details\b/.test(t) ||
+      // "वेंडर का बैंक अकाउंट बदल गया है", "बैंक डिटेल दोबारा वेरिफाई करें"
+      /(?:बैंक|payment)\s*(?:अकाउंट|एकाउंट|डिटेल|account)[^.!?]{0,20}(?:बदल|अपडेट|दोबारा|verify|वेरिफाई|भर|डाल|लिंक|जोड़)/.test(t),
   },
   {
     id: "family_emergency",
@@ -213,7 +279,9 @@ const RULES = [
       // and either an unverifiable number or a sudden crisis is the tactic.
       const relationship =
         /\b(?:mum|mom|dad|papa|mummy|beta|bro|sis|son|daughter|uncle|aunt(?:y|ie)?|grand(?:ma|pa)|it'?s\s*me)\b/.test(t) ||
-        /पापा|माँ|मम्मी|बेटा|बेटी|भाई|बहन|चाचा|मामा|दादी|दादा|मैं\s*हूँ/.test(t) ||
+        // माँ (with chandrabindu) and मां (with anusvara) are both common,
+        // interchangeable spellings of "mom" — only the first was covered.
+        /पापा|माँ|मां|मम्मी|बेटा|बेटी|भाई|बहन|चाचा|मामा|दादी|दादा|दीदी|मैं\s*हूँ/.test(t) ||
         /\b(?:main\s*hoon|bhai|behen|didi|chacha|mama|nana|nani)\b/.test(t);
       if (!relationship) return false;
 
@@ -224,16 +292,28 @@ const RULES = [
         (/\b(?:send|transfer|pay|paying|need|deposit|lend|credit)\b/.test(t) &&
           /\b(?:money|cash|rs|inr|rupees|upi|gpay|paytm|phonepe|amount|rent|fees?|funds?|account)\b/.test(t)) ||
         new RegExp(`(?:${HI.send}|transfer|bhijwa\\w*)[^.!?]{0,30}(?:${HI.money})`).test(t) ||
-        new RegExp(`(?:${HI.money})[^.!?]{0,30}(?:${HI.send}|transfer|chahiye|चाहिए)`).test(t);
+        new RegExp(`(?:${HI.money})[^.!?]{0,30}(?:${HI.send}|transfer|chahiye|चाहिए|मांग)`).test(t) ||
+        // Devanagari messages often name the amount and a bare send/deposit
+        // verb without a currency word in between ("3000 भेज दो") — the
+        // digit itself would carry that signal in English but normalize()
+        // folds it away, so a relationship term plus a bare transmission
+        // verb has to be enough on its own here. "मांग" (asking/demanding)
+        // covers the third-person framing — "the doctor is asking for
+        // 18000 rupees right now" — where nobody says "send" at all.
+        new RegExp(`${HI.send}|मांग`).test(t);
       if (!wantsMoney) return false;
 
       const unreachable =
         /\b(?:new|different|temp(?:orary)?|another|friend'?s|borrowed)\s*(?:number|phone|mobile|sim)\b|lost\s*my\s*(?:phone|wallet)|broke\s*my\s*(?:phone|screen)|texting\s*from\b/.test(t) ||
         /\b(?:nay[ae]|naya|dusre)\s*(?:number|phone|sim)|phone\s*kho\s*gaya|number\s*badal/.test(t) ||
-        /नए?\s*नंबर|फ़?ोन\s*खो\s*गया|दूसरे\s*नंबर/.test(t);
+        // "नए?" (matching bare "न" or "नए") never matches "नया नंबर" — नया
+        // is the direct-case form of "new" that precedes a masculine
+        // singular noun like नंबर, and नए is the oblique/plural form used
+        // before postpositions like "से". Real messages say "नया नंबर".
+        /न[ईएय][ां]?\s*(?:नंबर|सिम|फ़?ोन|मोबाइल)|फ़?ोन\s*खो\s*गया|दूसरे\s*नंबर|दोस्त\s*के\s*(?:नंबर|फ़?ोन)\s*से/.test(t);
       const crisis =
         /\b(?:accident|hospital|emergency|surgery|operation|admitted|icu|stuck|stranded|detained|arrested|police\s*station|urgent(?:ly)?|tonight|right\s*(?:now|away))\b/.test(t) ||
-        new RegExp(`\\b(?:${HI.urgent})\\b|दुर्घटना|अस्पताल|एक्सीडेंट|ऑपरेशन|भर्ती`).test(t);
+        new RegExp(`\\b(?:${HI.urgentLatin})\\b|${HI.urgentDevanagari}|दुर्घटना|अस्पताल|एक्सीडेंट|ऑपरेशन|भर्ती|फंसा|अटका|चोरी`).test(t);
 
       return unreachable || crisis;
     },
@@ -243,7 +323,10 @@ const RULES = [
     weight: 2.0,
     why: "It says a delivery needs money or re-confirmation before it can reach you. Couriers do not charge you to re-attempt a delivery — the fee is the scam, and the page that collects it collects your card.",
     test: (t) => {
-      if (!/\b(?:deliver(?:y|ed|ies)?|dispatch|shipment|parcel|package|courier|consignment)\b/.test(t)) {
+      if (
+        !/\b(?:deliver(?:y|ed|ies)?|dispatch|shipment)\b/.test(t) &&
+        !new RegExp(HI.parcel).test(t)
+      ) {
         return false;
       }
 
@@ -255,9 +338,14 @@ const RULES = [
       // there requires a boundary between "l" and "e" and can never match
       // "reschedule".
       const failed =
-        /\b(?:could\s*not|couldn'?t|cannot|can'?t|failed|unsuccessful|unable\s*to|attempt(?:ed)?|on\s*hold|pending|held|suspended|incomplete|incorrect\s*address)\b|address\s*verification/.test(t);
-      const action = /reschedul|re-?dispatch|re-?deliver|\bconfirm|\bverif|update\s*your\s*address/.test(t);
-      const payment = /\b(?:pay|paying|payment|fees?|charges?|deposit|customs|duty)\b/.test(t);
+        /\b(?:could\s*not|couldn'?t|cannot|can'?t|failed|unsuccessful|unable\s*to|attempt(?:ed)?|on\s*hold|pending|held|suspended|incomplete|incorrect\s*address)\b|address\s*verification/.test(t) ||
+        /रुका|अटका|लंबित|पेंडिंग|होल्ड/.test(t);
+      const action =
+        /reschedul|re-?dispatch|re-?deliver|\bconfirm|\bverif|update\s*your\s*address/.test(t) ||
+        /रिलीज़|दोबारा\s*भेज|पता\s*अपडेट|अपडेट\s*कर/.test(t);
+      const payment =
+        /\b(?:pay|paying|payment|fees?|charges?|deposit|customs|duty)\b/.test(t) ||
+        new RegExp(`${HI.fee}|भर(?:कर|ें|ना|ो)?`).test(t);
 
       return [failed, action, payment].filter(Boolean).length >= 2;
     },
@@ -269,15 +357,22 @@ const RULES = [
     test: (t) =>
       (/\b(?:job|work\s*from\s*home|part[\s-]?time|data\s*entry|hiring|vacancy|earn|salary|income|packing|typing|recruit)\b/.test(t) ||
         /\b(?:ghar\s*baithe|kaam\s*kar|kama(?:iye|ye|o)|naukri)\b/.test(t) ||
-        /घर\s*बैठे|काम\s*कर|कमा(?:एं|इए|ओ)|नौकरी/.test(t)) &&
+        // Real Devanagari-script job scams routinely spell the job itself in
+        // Devanagari letters ("जॉब", "इंटरव्यू", "टास्क") rather than using
+        // the Hindi words for it — these are loanwords, not translations.
+        /घर\s*बैठे|काम\s*कर|कमा(?:एं|इए|ओ)|नौकरी|जॉब|इंटरव्यू|सिलेक्ट|सैलरी|पार्ट\s*टाइम|टास्क|वर्क\s*फ्रॉम\s*होम/.test(t)) &&
       (/\b(?:pay|deposit|paying|charge|fee|amount|registration|security|refundable|membership|joining|advance)\b/.test(t) ||
-        new RegExp(`${HI.fee}|${HI.money}|registration|रजिस्ट्रेशन`).test(t)) &&
+        new RegExp(`${HI.fee}|${HI.money}|registration|रजिस्ट्रेशन|जॉइनिंग|किट`).test(t)) &&
       // No \d here on purpose: normalize() folds digits onto letters, so an
       // amount arrives as "soo" rather than "500". The charge is identified by
       // what it is called, not by the number attached to it.
       (/\b(?:registration|security|refundable|membership|joining|processing|courier|kit|training|advance|one[\s-]?time)\b[^.!?]{0,20}\b(?:fee|deposit|charge|amount|payment|of)\b|\b(?:pay|deposit)\b[^.!?]{0,25}\b(?:rs|inr|registration|deposit|membership)\b/.test(t) ||
-        // "registration ke liye 500 bhejiye", "रजिस्ट्रेशन के लिए 500 भेजें"
-        new RegExp(`(?:registration|रजिस्ट्रेशन|deposit|${HI.fee})[^.!?]{0,30}(?:${HI.send}|bhar|भर)`).test(t)),
+        // "registration ke liye 500 bhejiye", "रजिस्ट्रेशन के लिए 500 भेजें",
+        // "जॉइनिंग किट के लिए 999 रुपये" (no explicit fee/send word, just a
+        // named cost near a rupee amount — the amount stands in for one).
+        new RegExp(
+          `(?:registration|रजिस्ट्रेशन|deposit|जॉइनिंग|किट|वेरिफिकेशन|यूनिफॉर्म|आईडी|id\\s*card|${HI.fee})[^.!?]{0,30}(?:${HI.send}|bhar|भर|${HI.money})`
+        ).test(t)),
   },
   {
     id: "refund_callback",
@@ -290,6 +385,20 @@ const RULES = [
         /नंबर\s*पर\s*कॉल|number\s*par\s*call|कॉल\s*कर/.test(t)) &&
       (/\b(?:cancel|refund|dispute|unauthori[sz]ed|not\s*(?:authori[sz]ed|you|recognise|recognize)|if\s*this\s*(?:was|is)\s*not|to\s*stop)\b/.test(t) ||
         /agar\s*aapne\s*nahi|यदि\s*आपने\s*नहीं|अगर\s*आपने\s*नहीं|nahi\s*kiya/.test(t)),
+  },
+  {
+    id: "investment_scam",
+    weight: 2.2,
+    why: "It promises a guaranteed or unusually high return on an investment. Real investments carry risk — nobody can guarantee a return, and this is the setup for a payout that never comes.",
+    test: (t) =>
+      /\bguarantee(?:d)?\s*(?:return|profit|income)\b|double\s*(?:your\s*)?money|assured\s*returns?/.test(t) ||
+      // गारंटीड रिटर्न / पैसा डबल / डेली प्रॉफिट — none of this needs a
+      // digit to be recognisable, which matters because normalize() folds
+      // digits onto letters ("40%" survives as letters, not as "40").
+      /गारंटीड?\s*रिटर्न|एश्योर्ड\s*रिटर्न|पैसा\s*डबल|डेली\s*प्रॉफिट|मल्टीबैगर|गारंटी[^.!?]{0,20}(?:रिटर्न|प्रॉफिट|एलॉटमेंट)/.test(t) ||
+      ((/\b(?:invest(?:ment)?|trading|stock|share|mutual\s*fund|scheme|ipo)\b/.test(t) ||
+        /इन्वेस्ट|ट्रेडिंग|म्यूचुअल\s*फंड|स्टॉक\s*टिप्स|आईपीओ/.test(t)) &&
+        new RegExp(`${HI.money}|profit|return|scheme|स्कीम|vip\\s*ग्रुप|रिटर्न`).test(t)),
   },
   {
     id: "windfall_solicitation",

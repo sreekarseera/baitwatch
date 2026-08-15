@@ -865,20 +865,33 @@ check(
   `exonerating: ${hindiAction.exonerating.map((s) => s.id).join(", ") || "none"}`
 );
 
-// The tokenizer now reads Devanagari — its vowel signs are Unicode Marks and
-// used to split every word into unusable fragments — but the vocabulary still
-// has no Hindi in it, because 16 Devanagari rows in a 3,248-row corpus do not
-// survive min_df=3 and a 6,000-feature cap. So the terms are correct and the
-// model has no weight for any of them: it still yields almost no known terms
-// and a probability just under 0.5, which would *subtract* points from a
-// message it has no opinion about. The abstention is what keeps that from
-// happening, and it is load-bearing until the corpus carries enough Hindi to
-// learn from. Fixing the tokenizer was necessary for that and not sufficient.
+// The tokenizer reads Devanagari — its vowel signs are Unicode Marks and used
+// to split every word into unusable fragments, fixed 2026-08-06 — and as of
+// 2026-08-15 the corpus carries 250+ additional Devanagari rows rather than
+// 16, so ordinary scam vocabulary ("खाता", "ब्लॉक", "ओटीपी") now survives
+// min_df=3 and the 6,000-feature cap. The model has an opinion here instead
+// of abstaining. It is not asserted which way that opinion leans — a single
+// short message is not what the accuracy benchmark exists to grade, and the
+// rule layer, not the model, is what actually catches this one (KYC/account
+// block + urgency + a bare OTP demand). This only checks that abstention no
+// longer fires on Hindi vocabulary the corpus has actually taught it.
 const hindiModel = await analyzeLocal("आपका खाता ब्लॉक हो गया है। तुरंत ओटीपी भेजिए।");
 check(
-  "the model abstains on text it has no vocabulary for",
-  hindiModel.model.available === false,
+  "the model votes on devanagari it has vocabulary for, instead of abstaining",
+  hindiModel.model.available === true,
   `available=${hindiModel.model.available}, p=${hindiModel.model.probability}`
+);
+
+// Abstention itself is still load-bearing — this asserts the mechanism still
+// works for a script the corpus genuinely has no vocabulary in, not that
+// Hindi still triggers it.
+const unknownScriptModel = await analyzeLocal(
+  "இது ஒரு சோதனை செய்தி, இதற்கு பயிற்சி தரவு இல்லை."
+);
+check(
+  "the model still abstains on a script it has no vocabulary for",
+  unknownScriptModel.model.available === false,
+  `available=${unknownScriptModel.model.available}, p=${unknownScriptModel.model.probability}`
 );
 
 const englishModel = await analyzeLocal("Please confirm the meeting time for tomorrow afternoon.");
