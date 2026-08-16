@@ -57,6 +57,34 @@ const SIGNIN_ADJACENT_RE =
 // thousands of characters. This is the guard that separates the two.
 const THIN_PAGE_CHARS = 2500;
 
+// Hosted identity providers a login form may legitimately post to without the
+// page having anything to do with them — this is how OAuth, SAML and managed
+// auth actually work for sites that have nothing to do with the provider.
+// Kept short and specific on purpose: a loose or fuzzy match here reopens the
+// exact hole `analyzeStandaloneHarvest` below exists to close. Domains, not
+// hostnames — `accounts.google.com` and `login.microsoftonline.com` both
+// reduce to the entries listed here.
+const HOSTED_AUTH_DOMAINS = new Set([
+  "google.com", // accounts.google.com — Google Identity / "Sign in with Google"
+  "googleapis.com", // identitytoolkit.googleapis.com — Firebase Authentication
+  "firebaseapp.com", // Firebase-hosted auth handler pages
+  "microsoft.com",
+  "microsoftonline.com", // login.microsoftonline.com — Microsoft identity platform
+  "auth0.com",
+  "okta.com",
+  "oktapreview.com",
+  "onelogin.com",
+  "amazoncognito.com", // AWS Cognito hosted UI
+  "pingone.com",
+  "pingidentity.com",
+]);
+
+// A second, tighter line inside THIN_PAGE_CHARS. "Thin" alone still describes
+// plenty of ordinary embedded-widget login screens on real sites; this is
+// closer to "nothing here but the form and a headline" — the way a purpose-
+// built harvest page is thin and a real product's login screen usually isn't.
+const VERY_THIN_PAGE_CHARS = 400;
+
 function escapeRe(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -97,6 +125,69 @@ function claimsIdentity(brand, title, lead) {
     if (SIGNIN_ADJACENT_RE.test(before) || SIGNIN_ADJACENT_RE.test(after)) return true;
   }
   return false;
+}
+
+/**
+ * Whole-page rule, standalone: a login form that structurally looks like a
+ * credential harvest even when no PROTECTED_BRANDS entry is being
+ * impersonated. That list only covers brands common enough to be worth
+ * hand-maintaining — a regional bank, a small business, or a brand-new
+ * phishing kit copying a company nobody has added yet gets no signal at all
+ * from the rule above, however suspicious the page itself is structurally.
+ *
+ * Off-site POST alone proves nothing — that's exactly how OAuth, SSO and
+ * hosted auth work, which is why it is ordinarily only corroboration for a
+ * brand mismatch (see `offsite_credential_post` above). This only fires when
+ * the destination is *not* a recognized identity provider or a
+ * PROTECTED_BRANDS domain (handing credentials to a real company's own site
+ * is a fact about that company, not evidence of a harvest) AND the page
+ * brings at least one more independent piece of structural evidence:
+ *
+ *   - the page is not just thin (THIN_PAGE_CHARS already allows an ordinary
+ *     login page to be) but *very* thin — nothing on it besides the form and
+ *     a headline, the way an embedded widget on a real product rarely is; or
+ *   - the form asks for more than one kind of secret at once. Real sign-in
+ *     pages ask for one thing at a time, the same reasoning
+ *     `credential_request` in heuristics.js already leans on for messages.
+ *
+ * Deliberately weaker than `brand_impersonation`: that rule gets to name the
+ * brand being impersonated as evidence; this one only has structure, so its
+ * weight stays further under the score that would convict alone (see
+ * engine.js's squash() and the MODEL_MAX_PULL_PAGE comment on why a
+ * heuristic this uncertain should not be able to move a page that trips
+ * nothing else into "dangerous").
+ */
+function analyzeStandaloneHarvest(page, domain, credentials, body) {
+  const foreign = (page.formTargets || [])
+    .map((action) => registrableDomain(hostOf(action) || ""))
+    .find((target) => target && target !== domain);
+  if (!foreign) return [];
+  if (HOSTED_AUTH_DOMAINS.has(foreign)) return [];
+  if (PROTECTED_BRANDS.some((brand) => brand.domains.includes(foreign))) return [];
+
+  const veryThin = body.length <= VERY_THIN_PAGE_CHARS;
+  const multiSecret = new Set(credentials).size >= 2;
+  if (!veryThin && !multiSecret) return [];
+
+  const asks = credentials.join(" and ");
+  return [
+    {
+      id: "offsite_credential_harvest",
+      // Both corroborators present pushes this closer to the confidence
+      // brand_impersonation earns (2.6); either alone stays further back.
+      // squash(2.2) ≈ 57, with real headroom below DANGEROUS_AT (65) — this
+      // rule cannot convict a page on its own, only push it toward
+      // "suspicious". The margin (vs. cutting it as close as
+      // brand_impersonation does) is deliberate: unlike that rule, this one
+      // has no named brand to point to, and a real credential-harvest page
+      // will almost always also trip `credential_path` in urls.js (its own
+      // URL says /login or /verify) and pull some weight from the model, so
+      // it still reaches "dangerous" in practice — just not off this
+      // heuristic alone.
+      weight: veryThin && multiSecret ? 2.2 : 1.6,
+      detail: `This page is a bare sign-in form asking for ${asks}, served from "${domain}", that sends what you type to "${foreign}" — a site with no stated relationship to "${domain}" and not a recognized sign-in provider.`,
+    },
+  ];
 }
 
 /**
@@ -163,6 +254,15 @@ function analyzePage(page, urlBrands) {
     }
 
     break; // one impersonated brand is the finding; listing more adds noise
+  }
+
+  // No PROTECTED_BRANDS entry was claimed — either genuinely, or because the
+  // brand being impersonated simply isn't on that list. Still worth asking
+  // whether the page is structurally a credential harvest on its own terms.
+  // Skipped whenever the loop above already found something, so a known
+  // brand mismatch stays exactly the one finding it already was.
+  if (signals.length === 0) {
+    signals.push(...analyzeStandaloneHarvest(page, domain, credentials, body));
   }
 
   return signals;

@@ -20,7 +20,7 @@ globalThis.fetch = async (path) => ({
   json: async () => JSON.parse(readFileSync(path, "utf-8")),
 });
 
-const { analyze, analyzeLocal, shouldEscalate, VERDICT } = await import(join(ext, "engine", "engine.js"));
+const { analyze, analyzeLocal, shouldEscalate, VERDICT, THRESHOLDS } = await import(join(ext, "engine", "engine.js"));
 const { analyzeUrls, editDistance, registrableDomain } = await import(join(ext, "engine", "urls.js"));
 const { analyzeHeuristics } = await import(join(ext, "engine", "heuristics.js"));
 const { punycodeToUnicode } = await import(join(ext, "lib", "punycode.js"));
@@ -648,6 +648,91 @@ check(
   lookalikeAndClaim.reasons.some((r) => r.id === "lookalike_domain") &&
     !lookalikeAndClaim.reasons.some((r) => r.id === "brand_impersonation"),
   `fired: ${lookalikeAndClaim.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+// Standalone structural harvest signal: PROTECTED_BRANDS only covers brands
+// common enough to hand-maintain. A credential-harvest page impersonating a
+// brand that isn't on that list — a regional bank nobody's added — used to
+// get no signal at all from this layer, however suspicious its structure.
+// This fixture is thin, asks for two secrets at once, and posts off-site to
+// a domain that is neither the page's own nor a recognized auth provider.
+const brandNotListed = await pageScan(
+  "Verify your Meridian Savings Bank account to continue. Password. OTP.",
+  {
+    url: "https://meridian-secure-login.com/verify",
+    title: "Meridian Savings Bank — Secure Login",
+    credentialFields: ["password", "otp"],
+    formTargets: ["https://harvest-collect-9f2.ru/save"],
+  }
+);
+check(
+  "a credential harvest impersonating a brand not on PROTECTED_BRANDS still fires standalone",
+  brandNotListed.reasons.some((r) => r.id === "offsite_credential_harvest"),
+  `scored ${brandNotListed.score}, fired: ${brandNotListed.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+// The discipline MODEL_MAX_PULL_PAGE holds the model layer to — able to raise
+// a flag on its own, never able to convict on its own — applies here too.
+// Isolate the new rule from everything else that a realistic phishing page
+// also trips (its own URL usually matches credential_path in urls.js, and
+// the model reads the pretext language) by using a URL path that avoids
+// that regex and wording plain enough not to move the model much. What's
+// left on the board is the standalone signal alone, and it must stay under
+// DANGEROUS_AT.
+const isolatedSignal = await pageScan("Sign in. Password. OTP.", {
+  url: "https://portal-9182.com/index",
+  title: "Member Portal",
+  credentialFields: ["password", "otp"],
+  formTargets: ["https://drop-collect-31.info/save"],
+});
+check(
+  "the standalone signal, with nothing else tripped, cannot push a page into 'dangerous'",
+  isolatedSignal.reasons.every((r) => r.id === "offsite_credential_harvest") &&
+    isolatedSignal.score < THRESHOLDS.DANGEROUS_AT,
+  `scored ${isolatedSignal.score}, fired: ${isolatedSignal.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+// False-positive guard #1: a real hosted-auth provider. Off-site POST is
+// exactly how Auth0/Okta/"Sign in with Google" work for sites that have
+// nothing to do with the provider — this must not be indistinguishable from
+// a harvest just because the destination isn't the page's own domain.
+const hostedAuthFlow = await pageScan("Sign in to TaskFlow to continue to your workspace. Password.", {
+  url: "https://taskflow-app.com/login",
+  title: "Sign in - TaskFlow",
+  credentialFields: ["password"],
+  formTargets: ["https://taskflow.auth0.com/usernamepassword/login"],
+});
+check(
+  "a real hosted-auth provider (Auth0) receiving an off-site post is not flagged",
+  hostedAuthFlow.verdict === VERDICT.SAFE &&
+    !hostedAuthFlow.reasons.some((r) => r.id === "offsite_credential_harvest"),
+  `scored ${hostedAuthFlow.score}, fired: ${hostedAuthFlow.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+// False-positive guard #2: this is the exact failure mode the 2026-08-05
+// entry in docs/PROGRESS.md describes for credential_request — a real login
+// page landing in the same band as phishing. A single-field sign-in form
+// with an ordinary amount of real content, posting off-site to a vendor
+// nobody's heard of, is what a small bank's own third-party auth backend
+// looks like. Off-site-to-an-unrecognized-domain alone must not be enough.
+const smallBankOwnAuthVendor = await pageScan(
+  "GreenLeaf Community Bank online banking lets members view balances, review transaction history, " +
+    "transfer funds between GreenLeaf accounts, and pay bills electronically. Routing number 111000025. " +
+    "Branch locations in Millbrook, Denton, and Fairview are open Monday through Friday from 9am to 5pm " +
+    "and Saturday from 9am to noon. Reach customer service at 555-0142 during business hours. GreenLeaf " +
+    "Community Bank is a member of the FDIC and an Equal Housing Lender. Password.",
+  {
+    url: "https://greenleafbank.com/login",
+    title: "Sign In - GreenLeaf Community Bank",
+    credentialFields: ["password"],
+    formTargets: ["https://identity.greenleaf-auth.com/submit"],
+  }
+);
+check(
+  "a substantial single-field login page posting off-site is not enough on its own",
+  smallBankOwnAuthVendor.verdict === VERDICT.SAFE &&
+    !smallBankOwnAuthVendor.reasons.some((r) => r.id === "offsite_credential_harvest"),
+  `scored ${smallBankOwnAuthVendor.score}, fired: ${smallBankOwnAuthVendor.reasons.map((r) => r.id).join(", ") || "none"}`
 );
 
 // The whole-page scan exists to be used on sign-in pages, so the genuine ones
