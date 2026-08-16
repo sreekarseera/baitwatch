@@ -33,7 +33,16 @@ const HI = {
   // send / give / tell — the transmission verbs. "जमा" (deposit/submit) is
   // how a fee gets sent, not a way of sending it, but the two read the same
   // to whoever pays, so it belongs with the other transmission verbs.
-  send: "bhej\\w*|भेज\\w*|de\\s*do|दे\\s*दो|jama\\w*|जमा",
+  // "ट्रांसफर" (transfer) is the English loanword spelled in Devanagari, not
+  // a translation of it — real UPI/bank-transfer messages say "ट्रांसफर करो"
+  // far more often than "भेजो", the same loanword pattern already covered for
+  // "जॉब", "रिफंड", "चार्ज" elsewhere. Missing it meant a Devanagari message
+  // stating an amount and "ट्रांसफर करो" carried no send-verb signal at all.
+  // (Plain English "transfer" is deliberately not added here — it is already
+  // matched explicitly, proximity-gated to a money word, in the wantsMoney
+  // checks below; adding it to this bare union would let it fire unguarded
+  // through the money-optional third branch too.)
+  send: "bhej\\w*|भेज\\w*|de\\s*do|दे\\s*दो|jama\\w*|जमा|ट्रांसफ़?र\\w*",
   tell: "bata(?:o|iye|ye|yein|na)|बता(?:ओ|इए|एं|ना)",
   enter: "daal(?:o|iye|ein|na)?|dal(?:o|iye|ein)|डाल(?:ो|िए|ें|ना)?",
   money: "pais[ae]|rupay[ae]?|rupees|rakam|राशि|पैस[ेा]|रुपय[ेा]|रकम",
@@ -55,15 +64,22 @@ const HI = {
   // legitimate "just now" notification as urgent.
   urgentLatin: "turant|abhi|jald(?:i|ee)|foran",
   urgentDevanagari: "तुरंत|जल्दी|फ़?ौरन",
+  // "सस्पेंड" is the Devanagari-spelled loanword for "suspend" — real bank
+  // SMS use it at least as often as "ब्लॉक", and only the Latin spelling
+  // was covered.
   blocked:
-    "band\\s*ho|block\\s*ho|suspend|nilambit|बंद\\s*हो|ब्लॉक|निलंबित|समाप्त|" +
+    "band\\s*ho|block\\s*ho|suspend|सस्पेंड|nilambit|बंद\\s*हो|ब्लॉक|निलंबित|समाप्त|" +
     "रोक(?:ा|ी|दिया)?|काम\\s*नहीं\\s*करेगा",
   // ड्यूटी (duty) is how a customs/import charge is actually named in
   // Devanagari SMS — "शुल्क" is formal-register Hindi that real scam
   // messages use rarely.
   fee: "shulk|शुल्क|फ़?ीस|charge|fee|duty|ड्यूटी|चार्ज|क्लियरेंस",
+  // वारंट(?!ी) excludes "वारंटी" (warranty) — वारंट (warrant) is its own
+  // word but also happens to be the first five characters of the routine
+  // e-commerce word for "warranty", and a bare substring match can't tell
+  // them apart. Same class of bug as कस्टम(?!र) above, on a different word.
   police:
-    "cyber\\s*cell|साइबर\\s*सेल|cbi|सीबीआई|police|पुलिस|warrant|वारंट|giraftar|गिरफ़?्तार|थाना|थाने|" +
+    "cyber\\s*cell|साइबर\\s*सेल|cbi|सीबीआई|police|पुलिस|warrant|वारंट(?!ी)|giraftar|गिरफ़?्तार|थाना|थाने|" +
     "\\bed\\b|ईडी|फेमा|supreme\\s*court|सुप्रीम\\s*कोर्ट|money\\s*laundering|मनी\\s*लॉन्ड्रिंग|दूरसंचार",
   prize: "lotter[iy]|लॉटरी|jeet\\s*ga(?:ye|ya)|जीत\\s*ग(?:ए|या)|badhai|बधाई|inaam|इनाम",
   kyc: "kyc|केवाईसी",
@@ -173,9 +189,13 @@ const RULES = [
     weight: 1.5,
     why: "It claims your account is suspended, locked, or about to be closed. Manufactured account trouble is the standard hook for stealing logins.",
     test: (t) =>
-      /\b(?:account|card|profile|subscription|service)\b[^.!?]{0,40}\b(?:suspend(?:ed)?|lock(?:ed)?|block(?:ed)?|disabl(?:ed)?|deactivat(?:ed)?|restrict(?:ed)?|clos(?:ed|ure)|terminat(?:ed)?|on\s*hold)\b/.test(t) ||
+      // "net banking"/"netbanking" is how Indian bank customers actually name
+      // their online-banking access — a real noun in its own right, not just
+      // a modifier on "account" — and was missing from the noun list, so
+      // "your net banking suspended" carried no signal at all.
+      /\b(?:account|card|profile|subscription|service|net\s*banking)\b[^.!?]{0,40}\b(?:suspend(?:ed)?|lock(?:ed)?|block(?:ed)?|disabl(?:ed)?|deactivat(?:ed)?|restrict(?:ed)?|clos(?:ed|ure)|terminat(?:ed)?|on\s*hold)\b/.test(t) ||
       // "aapka khata band ho jayega", "KYC expire ho gaya hai"
-      new RegExp(`(?:${HI.account}|${HI.kyc})[^.!?]{0,40}(?:${HI.blocked}|expire|khatam|खत्म)`).test(t) ||
+      new RegExp(`(?:${HI.account}|${HI.kyc}|नेटबैंकिंग)[^.!?]{0,40}(?:${HI.blocked}|expire|khatam|खत्म)`).test(t) ||
       new RegExp(`(?:${HI.kyc})[^.!?]{0,25}(?:expire|समाप्त|pending|update)`).test(t),
   },
   {
@@ -328,7 +348,11 @@ const RULES = [
         // is the direct-case form of "new" that precedes a masculine
         // singular noun like नंबर, and नए is the oblique/plural form used
         // before postpositions like "से". Real messages say "नया नंबर".
-        /न[ईएय][ां]?\s*(?:नंबर|सिम|फ़?ोन|मोबाइल)|फ़?ोन\s*खो\s*गया|दूसरे\s*नंबर|दोस्त\s*के\s*(?:नंबर|फ़?ोन)\s*से/.test(t);
+        // "टेम्परेरी" (temporary) is the English loanword spelled in
+        // Devanagari, not a translation — a real message says "टेम्परेरी
+        // नंबर" at least as often as "नया नंबर", and only the latter was
+        // covered.
+        /न[ईएय][ां]?\s*(?:नंबर|सिम|फ़?ोन|मोबाइल)|टेम्परेरी\s*(?:नंबर|सिम|फ़?ोन|मोबाइल)|फ़?ोन\s*खो\s*गया|दूसरे\s*नंबर|दोस्त\s*के\s*(?:नंबर|फ़?ोन)\s*से/.test(t);
       const crisis =
         /\b(?:accident|hospital|emergency|surgery|operation|admitted|icu|stuck|stranded|detained|arrested|police\s*station|urgent(?:ly)?|tonight|right\s*(?:now|away))\b/.test(t) ||
         new RegExp(`\\b(?:${HI.urgentLatin})\\b|${HI.urgentDevanagari}|दुर्घटना|अस्पताल|एक्सीडेंट|ऑपरेशन|भर्ती|फंसा|अटका|चोरी`).test(t);

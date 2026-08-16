@@ -925,6 +925,52 @@ for (const message of [
   );
 }
 
+// Four regex gaps found while chasing the accuracy benchmark's curated misses
+// down to the exact row responsible (2026-08-16/17's technique): each rule
+// looked like it covered a case and silently didn't, on a Devanagari
+// loanword or a substring collision rather than a missing whole feature.
+for (const [name, message, rule] of [
+  [
+    "ट्रांसफर (transfer) as a Devanagari send-verb",
+    "भाई यह मेरा टेम्परेरी नंबर है, पुराना फोन खराब हो गया। अभी 4000 रुपये ट्रांसफर कर दो, कल वापस कर दूंगा।",
+    "family_emergency",
+  ],
+  [
+    "टेम्परेरी (temporary) recognised as an unreachable-number claim",
+    "मम्मी यह टेम्परेरी नंबर है मेरा, फोन टूट गया। 5000 रुपये अभी ट्रांसफर करो, वीकेंड तक वापस कर दूंगा।",
+    "family_emergency",
+  ],
+  [
+    "नेटबैंकिंग (net banking) suspended, not just 'account' suspended",
+    "आपका HDFC नेटबैंकिंग सस्पेंड कर दिया गया है, लिंक पर क्लिक करके डिटेल्स वेरिफाई करें वरना एक्सेस बंद रहेगा।",
+    "account_suspension",
+  ],
+  [
+    "net banking suspended (English noun the rule previously only had as 'account')",
+    "Aapka SBI net banking suspend ho gaya. Link par click karke details verify kijiye.",
+    "account_suspension",
+  ],
+]) {
+  const result = analyzeHeuristics(message);
+  check(
+    `${rule} fires: ${name}`,
+    result.signals.some((s) => s.id === rule),
+    `fired: ${result.signals.map((s) => s.id).join(", ") || "nothing"}`
+  );
+}
+
+// वारंट (warrant) is a substring of वारंटी (warranty) — a bare substring
+// match flagged every routine "your warranty registration is complete"
+// message, the same class of bug as कस्टम(?!र) vs कस्टमर above.
+const warrantyNotice = analyzeHeuristics(
+  "आपकी वारंटी रजिस्ट्रेशन सफलतापूर्वक पूरी हो गई है, डिटेल्स आपके ईमेल पर भेज दी गई हैं।"
+);
+check(
+  "वारंटी (warranty) does not trip the वारंट (warrant) police/authority pattern",
+  !warrantyNotice.signals.some((s) => s.id === "threat_of_consequence" || s.id === "impersonated_authority"),
+  `fired: ${warrantyNotice.signals.map((s) => s.id).join(", ") || "none"}`
+);
+
 /* --------------------------- hinglish and devanagari ----------------------- */
 // The tactics these rules encode are largely Indian, but every pattern matched
 // English wording only, so the same scam in Hinglish tripped nothing at all.
