@@ -5,9 +5,20 @@
   "description": "Catches scam and phishing messages as you read them. Runs entirely on your device — nothing is sent anywhere by default.",
   "minimum_chrome_version": "116",
 
-  "permissions": ["storage", "contextMenus", "notifications", "activeTab", "scripting"],
+  "permissions": ["storage", "contextMenus", "notifications", "activeTab", "scripting", "alarms", "webRequest"],
 
-  "optional_host_permissions": ["https://api.anthropic.com/*"],
+  "optional_host_permissions": [
+    "https://api.anthropic.com/*",
+
+    "https://bit.ly/*", "https://tinyurl.com/*", "https://goo.gl/*",
+    "https://t.co/*", "https://ow.ly/*", "https://is.gd/*", "https://buff.ly/*",
+    "https://rebrand.ly/*", "https://cutt.ly/*", "https://shorturl.at/*",
+    "https://rb.gy/*", "https://tiny.cc/*", "https://bl.ink/*", "https://t.ly/*",
+    "https://snip.ly/*", "https://s.id/*", "https://clck.ru/*", "https://u.to/*",
+    "https://v.gd/*",
+
+    "https://urlhaus.abuse.ch/*"
+  ],
 
   "action": {
     "default_popup": "popup/popup.html",

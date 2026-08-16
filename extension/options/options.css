@@ -51,6 +51,37 @@ h2 { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
   max-width: 56ch;
 }
 
+/* ------------------------------ feature blocks ----------------------------- */
+
+.subhead {
+  font-size: 12.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 22px 0 8px;
+}
+.subhead:first-of-type { margin-top: 4px; }
+
+.feature-block {
+  border-left: 2px solid var(--line);
+  padding-left: 14px;
+  margin-bottom: 22px;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 1px 7px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
 /* --------------------------------- toggles -------------------------------- */
 
 .toggle {

@@ -11,6 +11,8 @@ import { analyzeHeuristics } from "./heuristics.js";
 import { analyzeUrls } from "./urls.js";
 import { analyzeImpersonation } from "./impersonation.js";
 import { classify } from "./model.js";
+import { matchUrlhaus } from "./urlhaus.js";
+import { extractUrls } from "../lib/text.js";
 
 export const VERDICT = {
   DANGEROUS: "dangerous",
@@ -55,10 +57,12 @@ function squash(rawScore) {
 /**
  * Run the local (free, offline, private) layers.
  * @param {string} text
- * @param {{extraUrls?: string[], page?: object}} [opts] `extraUrls` carries link
- *   targets and the page address during a whole-page scan — see analyzeUrls.
- *   `page` carries the page's own address, title, form targets, and which kinds
- *   of credential field it contains — see analyzeImpersonation.
+ * @param {{extraUrls?: string[], page?: object, urlhausFeed?: object}} [opts]
+ *   `extraUrls` carries link targets and the page address during a whole-page
+ *   scan — see analyzeUrls. `page` carries the page's own address, title, form
+ *   targets, and which kinds of credential field it contains — see
+ *   analyzeImpersonation. `urlhausFeed` is the downloaded URLhaus list from
+ *   storage, already local — see matchUrlhaus.
  * @returns {Promise<object>} verdict object
  */
 export async function analyzeLocal(text, opts = {}) {
@@ -66,6 +70,20 @@ export async function analyzeLocal(text, opts = {}) {
     hasCredentialForm: (opts.page?.credentialFields || []).length > 0,
   });
   const urls = analyzeUrls(text, opts.extraUrls || []);
+
+  // Matched against a feed already sitting in storage — no network call
+  // happens here, so this stays inside the "local" analysis, unlike shortener
+  // resolution which analyze() runs as its own opt-in network step below.
+  const urlhausHit = opts.urlhausFeed ? matchUrlhaus(urls.urls, opts.urlhausFeed) : null;
+  if (urlhausHit) {
+    const signal = {
+      id: "urlhaus_match",
+      weight: 4.0,
+      detail: `"${urlhausHit}" is on abuse.ch's URLhaus list of known malicious web addresses.`,
+    };
+    urls.signals.push(signal);
+    urls.score += signal.weight;
+  }
 
   // Runs after the URL layer so it can see which brands were already flagged
   // there: a lookalike domain and an impersonated page are one finding.
@@ -147,16 +165,38 @@ export function shouldEscalate(local) {
 }
 
 /**
- * Full analysis. Runs the local layers, then optionally asks Claude for a
- * reasoned second opinion when a key is configured and the case is uncertain.
+ * Full analysis. Optionally resolves shortener links first (so their real
+ * destination gets scored by the URL layer rather than the shortener domain
+ * alone), runs the local layers, then optionally asks Claude for a reasoned
+ * second opinion when a key is configured and the case is uncertain.
  *
  * @param {string} text
- * @param {{sender?: string, source?: string, cloud?: (text, local) => Promise<object|null>}} opts
+ * @param {{sender?: string, source?: string, cloud?: (text, local) => Promise<object|null>,
+ *   resolveShortener?: (urls: string[]) => Promise<{resolved: boolean, destinations: Map<string,string>}>,
+ *   urlhausFeed?: object}} opts
  */
 export async function analyze(text, opts = {}) {
-  const local = await analyzeLocal(text, { extraUrls: opts.extraUrls, page: opts.page });
+  let extraUrls = opts.extraUrls || [];
+  let shortenerResolved = false;
+
+  if (opts.resolveShortener) {
+    try {
+      const { resolved, destinations } = await opts.resolveShortener([...extractUrls(text), ...extraUrls]);
+      if (resolved) {
+        extraUrls = [...extraUrls, ...destinations.values()];
+        shortenerResolved = true;
+      }
+    } catch (err) {
+      // Best-effort: scoring proceeds against the shortener link itself
+      // rather than failing the whole analysis over one unreachable service.
+      console.warn("[BaitWatch] shortener resolution failed:", err);
+    }
+  }
+
+  const local = await analyzeLocal(text, { extraUrls, page: opts.page, urlhausFeed: opts.urlhausFeed });
   local.sender = opts.sender || "";
   local.source = opts.source || "manual";
+  local.shortenerResolved = shortenerResolved;
 
   if (!opts.cloud || !shouldEscalate(local)) return local;
 

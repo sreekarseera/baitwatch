@@ -52,35 +52,102 @@
       </section>
 
       <section>
-        <h2>Second opinion from Claude</h2>
+        <h2>Network features</h2>
         <p class="note">
-          Off by default. When on, messages the on-device check can't settle confidently are sent to
-          Anthropic's API using <em>your</em> API key, and Claude explains in plain language what the
-          sender is trying to do. Everything else stays on your device. There is no server in this
-          project — your key is stored locally and used only by this extension.
+          Everything below is off by default and stays off until you turn it on. Each toggle here
+          sends something different to a different place — one message's text to Anthropic, one link
+          to whichever service shortened it, or nothing at all beyond a standing download from
+          abuse.ch — so each has its own switch and its own permission. Turning one on never turns on
+          another, and turning any of them off hands back the network access it used.
         </p>
 
-        <label class="toggle">
-          <input type="checkbox" id="cloudTier" />
-          <span
-            ><strong>Ask Claude when the local check is uncertain</strong
-            ><small>Roughly 1 in 5 messages. Typical cost: well under a cent each.</small></span
-          >
-        </label>
+        <div class="feature-block">
+          <p class="subhead">Second opinion from Claude</p>
+          <p class="note">
+            When on, messages the on-device check can't settle confidently are sent to Anthropic's API
+            using <em>your</em> API key, and Claude explains in plain language what the sender is trying
+            to do. Everything else stays on your device. There is no server in this project — your key
+            is stored locally and used only by this extension.
+          </p>
 
-        <label class="field">
-          <span>Anthropic API key</span>
-          <div class="key-row">
-            <input id="apiKey" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" />
-            <button id="toggleKey" class="ghost small" type="button">Show</button>
-            <button id="testKey" class="ghost small" type="button">Test</button>
-          </div>
-          <small class="hint">
-            Create one at <span class="mono">console.anthropic.com</span> → API Keys. Stored only in
-            this browser.
-          </small>
-        </label>
-        <p id="keyStatus" class="status" hidden></p>
+          <label class="toggle">
+            <input type="checkbox" id="cloudTier" />
+            <span
+              ><strong>Ask Claude when the local check is uncertain</strong
+              ><small>Roughly 1 in 5 messages. Typical cost: well under a cent each.</small></span
+            >
+          </label>
+
+          <label class="field">
+            <span>Anthropic API key</span>
+            <div class="key-row">
+              <input id="apiKey" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" />
+              <button id="toggleKey" class="ghost small" type="button">Show</button>
+              <button id="testKey" class="ghost small" type="button">Test</button>
+            </div>
+            <small class="hint">
+              Create one at <span class="mono">console.anthropic.com</span> → API Keys. Stored only in
+              this browser.
+            </small>
+          </label>
+          <p id="keyStatus" class="status" hidden></p>
+        </div>
+
+        <div class="feature-block">
+          <p class="subhead">Resolve shortened links<span class="badge">new</span></p>
+          <p class="note">
+            When on, and a message contains a link from a known shortening service — bit.ly,
+            tinyurl.com, and 17 others BaitWatch already recognises — the extension asks that service
+            directly where the link leads, before scoring it. That tells the shortening service which
+            link you're looking at, and shows it your computer's IP address. Nothing else about the
+            message goes anywhere. Only the <em>first</em> redirect is followed, never the pages after
+            it, so a link that hops through more than one shortener is only unwound once.
+          </p>
+
+          <label class="toggle">
+            <input type="checkbox" id="resolveShorteners" />
+            <span
+              ><strong>Look up where shortened links actually go</strong
+              ><small>Only for links from known shortening services.</small></span
+            >
+          </label>
+          <p id="shortenerStatus" class="status" hidden></p>
+        </div>
+
+        <div class="feature-block">
+          <p class="subhead">Check links against URLhaus<span class="badge">new</span></p>
+          <p class="note">
+            When on, the extension periodically downloads abuse.ch's public URLhaus list of known
+            malicious web addresses and keeps a copy on this device. A link in a message you're checking
+            is compared against that local copy — the link itself is never sent to abuse.ch or anyone
+            else. No account or key is required for this download today; if abuse.ch starts requiring
+            one, add it below and it will be sent automatically from then on.
+          </p>
+
+          <label class="toggle">
+            <input type="checkbox" id="checkUrlhaus" />
+            <span
+              ><strong>Check links against URLhaus's malicious-link list</strong
+              ><small>Downloads a public threat list from abuse.ch; the links you check stay on your device.</small></span
+            >
+          </label>
+
+          <label class="field">
+            <span>abuse.ch Auth-Key (optional)</span>
+            <div class="key-row">
+              <input id="urlhausAuthKey" type="password" placeholder="Not required today…" autocomplete="off" spellcheck="false" />
+              <button id="toggleUrlhausKey" class="ghost small" type="button">Show</button>
+              <button id="testUrlhausKey" class="ghost small" type="button">Test</button>
+            </div>
+            <small class="hint">
+              Not needed to use this feature. Free at <span class="mono">auth.abuse.ch</span> if you
+              want one anyway — sign in with Google, GitHub, or similar, then generate an Auth-Key under
+              "Optional". Stored only in this browser, and sent only if you fill this in.
+            </small>
+          </label>
+          <p id="urlhausKeyStatus" class="status" hidden></p>
+          <p id="urlhausSyncStatus" class="hint">Not yet downloaded.</p>
+        </div>
       </section>
 
       <section>

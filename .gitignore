@@ -18,3 +18,8 @@ dist/
 
 # Agent worktrees are transient, and each is its own git repo.
 .claude/worktrees/
+
+# Chrome for Testing, fetched on demand by
+# `npx @puppeteer/browsers install chrome@stable` per tests/run_all.py's own
+# instructions — not something to commit.
+/chrome/

@@ -9,9 +9,10 @@ import {
   addAllowed,
   getStats,
   getSettings,
+  getUrlhausFeed,
 } from "../lib/storage.js";
 import { toCsv, downloadCsv } from "../lib/csv.js";
-import { truncate } from "../lib/text.js";
+import { truncate, relativeTime } from "../lib/text.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -44,13 +45,34 @@ $("openSettings").addEventListener("click", () => chrome.runtime.openOptionsPage
  * failed, do not claim the message stayed on the machine. It is the one line
  * in this interface that has to be literally true: a user who reads "nothing
  * left your computer" has no other way to find out that it did.
+ *
+ * `checkUrlhaus` needs no branch here: it matches against a feed already
+ * sitting in storage, so no network call happens while *this* message is
+ * being scored, whether or not the feature is on — see
+ * docs/design/network-consent/rationale.md ("Question 3"). `resolveShorteners`
+ * is the opposite: when it actually contacted a shortening service to unwind
+ * a link in this message, that's part of producing this specific result, so
+ * the sentence is false for this result unless it says so.
  */
 function describeTier(result) {
-  if (result.tier === "claude") return "Checked on your device, then confirmed with Claude.";
+  const shortenerNote = result.shortenerResolved
+    ? " To see where a shortened link led, this check also contacted the shortening service directly."
+    : "";
+
+  if (result.tier === "claude") {
+    return "Checked on your device, then confirmed with Claude." + shortenerNote;
+  }
   if (result.tier === "cloud-failed") {
-    return result.cloudReached
+    const base = result.cloudReached
       ? "Checked on your device. This message was sent to Claude, which answered with an error instead of a verdict."
       : "Checked on your device. Claude could not be reached, so this message may have left your computer.";
+    return base + shortenerNote;
+  }
+  if (result.shortenerResolved) {
+    return (
+      "Checked on your device. To see where a shortened link led, this check also " +
+      "contacted the shortening service directly — nothing else left your computer."
+    );
   }
   return "Checked entirely on your device — nothing left your computer.";
 }
@@ -466,9 +488,17 @@ $("exportBlocklist").addEventListener("click", async () => {
 /* ---------------------------------- footer -------------------------------- */
 
 async function renderFooter() {
-  const settings = await getSettings();
+  const [settings, urlhausFeed] = await Promise.all([getSettings(), getUrlhausFeed()]);
   const parts = [settings.autoScan ? "Auto-scan on" : "Auto-scan off"];
-  parts.push(settings.cloudTier && settings.apiKey ? "Claude second opinion on" : "On-device only");
+
+  const network = [];
+  if (settings.cloudTier && settings.apiKey) network.push("Claude second opinion on");
+  if (settings.resolveShorteners) network.push("Shortened-link lookup on");
+  if (settings.checkUrlhaus && settings.urlhausAuthKey) {
+    network.push(urlhausFeed ? `URLhaus list synced ${relativeTime(urlhausFeed.updatedAt)}` : "URLhaus list syncing…");
+  }
+
+  parts.push(network.length ? network.join(" · ") : "On-device only");
   $("footer").textContent = parts.join(" · ");
 }
 

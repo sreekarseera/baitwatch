@@ -6,6 +6,8 @@
 
 import { analyze, VERDICT } from "../engine/engine.js";
 import { createCloudAnalyzer } from "../engine/claude.js";
+import { resolveShortenerLinks, SHORTENER_ORIGINS } from "../engine/shortener.js";
+import { fetchUrlhausFeed, UrlhausAuthError, URLHAUS_ALARM } from "../engine/urlhaus.js";
 import {
   getSettings,
   addHistoryEntry,
@@ -14,7 +16,46 @@ import {
   addBlocked,
   addAllowed,
   bumpStat,
+  getUrlhausFeed,
+  saveUrlhausFeed,
 } from "../lib/storage.js";
+
+const URLHAUS_ORIGIN = "https://urlhaus.abuse.ch/*";
+
+/**
+ * Download the feed and replace the stored copy. Returns a result object
+ * rather than throwing, since both the alarm handler and the options page's
+ * manual refresh need to report a status without crashing the caller — a
+ * failed refresh keeps whatever copy was already saved (see copy.md's "using
+ * the copy from {relative time}" state).
+ *
+ * Deliberately does not gate on settings.checkUrlhaus: this same function
+ * backs the options page's "Test" button, which has to work *before* the
+ * toggle is switched on (mirrors testKey for the Claude tier, which has no
+ * such gate either), and the toggle-on flow calls this before its own
+ * saveSettings() write lands — gating here made both paths fail with
+ * "checking is off" on every use that mattered. Whether a downloaded feed is
+ * ever actually consulted is already decided correctly at read time, in
+ * runAnalysis below (`settings.checkUrlhaus ? await getUrlhausFeed() : null`)
+ * — downloading one early is inert, not a leak.
+ */
+async function refreshUrlhausFeed() {
+  const settings = await getSettings();
+  if (!(await chrome.permissions.contains({ origins: [URLHAUS_ORIGIN] }))) {
+    return { ok: false, reason: "Permission to reach urlhaus.abuse.ch was revoked." };
+  }
+  try {
+    const entries = await fetchUrlhausFeed(settings.urlhausAuthKey);
+    const feed = await saveUrlhausFeed(entries);
+    return { ok: true, feed };
+  } catch (err) {
+    return { ok: false, reason: err.message, authError: err instanceof UrlhausAuthError };
+  }
+}
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === URLHAUS_ALARM) refreshUrlhausFeed();
+});
 
 const BADGE_COLORS = {
   [VERDICT.DANGEROUS]: "#b3261e",
@@ -101,7 +142,25 @@ async function runAnalysis({ text, sender = "", source = "manual", extraUrls = [
       ? createCloudAnalyzer(settings.apiKey)
       : null;
 
-  const result = await analyze(text, { sender: normalizedSender, source, cloud, extraUrls, page });
+  // Same pattern as the cloud tier: the setting alone is never enough to
+  // attempt a request. A permission revoked from chrome://extensions must
+  // fail closed, not throw a network error that reads like a bug.
+  const resolveShortener =
+    settings.resolveShorteners && (await chrome.permissions.contains({ origins: SHORTENER_ORIGINS }))
+      ? resolveShortenerLinks
+      : null;
+
+  const urlhausFeed = settings.checkUrlhaus ? await getUrlhausFeed() : null;
+
+  const result = await analyze(text, {
+    sender: normalizedSender,
+    source,
+    cloud,
+    extraUrls,
+    page,
+    resolveShortener,
+    urlhausFeed,
+  });
 
   await bumpStat("scanned");
   // Counts requests *attempted*, not answers received. Counting only successes
@@ -150,6 +209,15 @@ chrome.runtime.onMessage.addListener((msg, sender, respond) => {
 
     case "ALLOW_SENDER":
       addAllowed(msg.email).then(() => respond({ ok: true }));
+      return true;
+
+    // Fired by options.js right after the toggle is switched on (so the user
+    // doesn't wait up to an hour for the first copy) and by its "Test" button.
+    // The recurring schedule itself is set up by options.js via
+    // chrome.alarms.create/clear, since that's a plain extension-page API call
+    // with nothing background-only about it.
+    case "REFRESH_URLHAUS":
+      refreshUrlhausFeed().then(respond);
       return true;
 
     default:

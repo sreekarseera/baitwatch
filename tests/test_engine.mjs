@@ -117,6 +117,14 @@ const LEGIT = [
   // additions, not a rule; this is the regression test for that fix.
   ["new-account verification email, no threat or urgency",
    "Verify your email address. Please verify your email address to finish setting up your new Bitwarden account. Verify Email Address. If you did not request this email, you can safely ignore it. This link will expire in 24 hours."],
+  // Real false positive, reported live against the actual page (whole-page
+  // scan, not a message): docs.alpaca.markets/us/docs/about-alpaca scored
+  // 74/dangerous on "crypto trading" (paragraph 1) and "Invest Like the
+  // Best" — a podcast title, inside an unrelated investor's bio three
+  // paragraphs later — combining under the pre-fix crypto_transfer rule.
+  // Real page text, fetched live rather than reconstructed.
+  ["long informational page mentioning crypto and \"invest\" in unrelated places",
+   "About Alpaca. History & Founders. Alpaca is a technology company headquartered in Silicon Valley that builds a simple and modern API for stock and crypto trading. Our Brokerage services are provided by Alpaca Securities LLC, a member of FINRA/SIPC. Our investors include a group of well-capitalized investors including Portage Ventures, Spark Capital, Tribe Capital, Social Leverage, Horizons Ventures, Elderidge, and Y Combinator as well as highly experienced industry angel investors such as Joshua S. Levine (former CTO/COO of ETRADE), Nate Rodland (former COO of Robinhood and GP of Elefund), Patrick O'Shaughnessy (\"Invest Like the Best\" podcast host and Partner of Positive Sum), Jacqueline Reses (former Executive Chairman of Square Financial Services). We currently support stocks, ETFs listed in the US public exchanges (NMS stocks), Options trading, and cryptocurrencies."],
 ];
 
 for (const [name, text] of LEGIT) {
@@ -985,6 +993,115 @@ check("and it does not claim the message was sent when it cannot know",
 const untouched = await analyze(UNCERTAIN, {});
 check("with no cloud analyzer the tier stays on-device", untouched.tier === "on-device");
 check("and carries no cloud error", untouched.cloudError === undefined);
+
+/* -------------------------- network-consent features ------------------------ */
+
+const { URL_SHORTENERS } = await import(join(ext, "engine", "urls.js"));
+const { SHORTENER_ORIGINS, isShortenerUrl } = await import(join(ext, "engine", "shortener.js"));
+const { parseFeed, matchUrlhaus } = await import(join(ext, "engine", "urlhaus.js"));
+
+// manifest.json's optional_host_permissions has to be kept in sync by hand
+// (Chrome requires origins statically declared; there's no build step to
+// generate it from URL_SHORTENERS) — this is the drift check the comments in
+// urls.js and shortener.js promise.
+const manifest = JSON.parse(readFileSync(join(ext, "manifest.json"), "utf-8"));
+const manifestShortenerOrigins = manifest.optional_host_permissions.filter((o) =>
+  [...URL_SHORTENERS].some((d) => o === `https://${d}/*`)
+);
+check(
+  "manifest.json declares exactly the shortener origins URL_SHORTENERS recognizes",
+  manifestShortenerOrigins.length === URL_SHORTENERS.size &&
+    SHORTENER_ORIGINS.every((o) => manifestShortenerOrigins.includes(o)),
+  `manifest has ${manifestShortenerOrigins.length}, URL_SHORTENERS has ${URL_SHORTENERS.size}`
+);
+check(
+  "manifest.json declares the urlhaus origin",
+  manifest.optional_host_permissions.includes("https://urlhaus.abuse.ch/*")
+);
+
+check("isShortenerUrl recognizes a known shortener", isShortenerUrl("https://bit.ly/abc123"));
+check("isShortenerUrl rejects an ordinary domain", !isShortenerUrl("https://example.com/abc123"));
+
+/* -- shortener resolution feeds the resolved destination into URL scoring -- */
+
+const resolved = await analyze("Your PayPal account has been limited. Restore access here: https://bit.ly/xyz", {
+  resolveShortener: async () => ({
+    resolved: true,
+    destinations: new Map([["https://bit.ly/xyz", "https://paypa1-secure.com/login"]]),
+  }),
+});
+check("shortenerResolved is set once a destination is found", resolved.shortenerResolved === true);
+check(
+  "the resolved destination is scored, not just the shortener link",
+  resolved.reasons.some((r) => r.id === "lookalike_domain"),
+  resolved.reasons.map((r) => r.id).join(",")
+);
+
+const notShortened = await analyze("Ordinary text with no links.", {
+  resolveShortener: async () => ({ resolved: false, destinations: new Map() }),
+});
+check("shortenerResolved stays false when nothing was resolved", notShortened.shortenerResolved === false);
+
+const shortenerFailed = await analyze("Check this out: https://bit.ly/xyz", {
+  resolveShortener: async () => {
+    throw new Error("network unreachable");
+  },
+});
+check(
+  "a failed shortener resolution degrades gracefully, not a crash",
+  shortenerFailed.shortenerResolved === false && typeof shortenerFailed.score === "number"
+);
+
+const noResolver = await analyze("Check this out: https://bit.ly/xyz", {});
+check("with no resolver configured, shortenerResolved is false", noResolver.shortenerResolved === false);
+
+/* --------------------------------- urlhaus ---------------------------------- */
+
+check(
+  "parseFeed reads one URL per plain-text line and skips comments",
+  (() => {
+    const urls = parseFeed("# comment\nhttps://evil.example/payload\n\nhttps://also-evil.example/x\n");
+    return urls.length === 2 && urls.includes("https://evil.example/payload");
+  })()
+);
+
+check(
+  "parseFeed also reads the URL out of a CSV row, format unknown in advance",
+  (() => {
+    const urls = parseFeed('"1","2026-01-01","https://evil.example/payload","online","","malware_download"');
+    return urls.length === 1 && urls[0] === "https://evil.example/payload";
+  })()
+);
+
+check(
+  "matchUrlhaus finds an exact hit, ignoring a trailing slash",
+  matchUrlhaus(["https://evil.example/payload/"], { entries: ["https://evil.example/payload"] }) ===
+    "https://evil.example/payload"
+);
+check("matchUrlhaus returns null with no feed", matchUrlhaus(["https://evil.example/payload"], null) === null);
+check(
+  "matchUrlhaus returns null when nothing matches",
+  matchUrlhaus(["https://safe.example/"], { entries: ["https://evil.example/payload"] }) === null
+);
+
+const urlhausHit = await analyzeLocal("Download your invoice: https://evil.example/payload", {
+  urlhausFeed: { entries: ["https://evil.example/payload"] },
+});
+check(
+  "a URLhaus feed match convicts on its own",
+  urlhausHit.verdict === VERDICT.DANGEROUS,
+  `score ${urlhausHit.score}`
+);
+check(
+  "the urlhaus_match signal is reported",
+  urlhausHit.reasons.some((r) => r.id === "urlhaus_match")
+);
+
+const urlhausNoFeed = await analyzeLocal("Download your invoice: https://evil.example/payload");
+check(
+  "with no feed loaded, the same link is not flagged as a urlhaus match",
+  !urlhausNoFeed.reasons.some((r) => r.id === "urlhaus_match")
+);
 
 /* ---------------------------------- report --------------------------------- */
 

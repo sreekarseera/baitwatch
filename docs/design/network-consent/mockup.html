@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- Reuses the real stylesheet so this renders pixel-identical to the
+         actual options page. Nothing here is wired to extension code — this
+         file is a design mockup, not a build artifact. -->
+    <link rel="stylesheet" href="../../../extension/options/options.css" />
+    <title>BaitWatch — Settings (mockup: Network features)</title>
+    <style>
+      /* Mockup-only chrome: marks this as a design artifact, not the real page. */
+      .mockup-banner {
+        max-width: 620px;
+        margin: 0 auto 24px;
+        padding: 10px 14px;
+        background: color-mix(in srgb, var(--accent) 10%, transparent);
+        border: 1px dashed var(--line);
+        border-radius: 8px;
+        font-size: 12.5px;
+        color: var(--muted);
+      }
+      .subhead {
+        font-size: 12.5px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+        margin: 22px 0 8px;
+      }
+      .subhead:first-of-type { margin-top: 4px; }
+      .feature-block {
+        border-left: 2px solid var(--line);
+        padding-left: 14px;
+        margin-bottom: 22px;
+      }
+      .badge {
+        display: inline-block;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        padding: 1px 7px;
+        border-radius: 20px;
+        border: 1px solid var(--line);
+        color: var(--muted);
+        margin-left: 6px;
+        vertical-align: middle;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="mockup-banner">
+      Design mockup — <code>docs/design/network-consent/mockup.html</code>. Shows the proposed
+      "Network features" section only. Not part of the shipped extension.
+    </div>
+
+    <main>
+      <h1>BaitWatch</h1>
+      <p class="sub">Version 2.0 — settings</p>
+
+      <!-- ============================================================
+           NEW: this section replaces "Second opinion from Claude" and
+           becomes the one shared consent surface for every feature that
+           sends something off this device. See rationale.md for why the
+           three toggles below stay independent instead of collapsing
+           into one master switch.
+           ============================================================ -->
+      <section>
+        <h2>Network features</h2>
+        <p class="note">
+          Everything below is off by default and stays off until you turn it on. Each toggle here
+          sends something different to a different place — one message's text to Anthropic, one
+          link to whichever service shortened it, or nothing at all beyond a standing download from
+          abuse.ch — so each has its own switch and its own permission. Turning one on never turns
+          on another, and turning any of them off hands back the network access it used.
+        </p>
+
+        <!-- ---- 1. Claude second opinion (existing feature, unchanged behaviour,
+                     relocated into this shared section) ---- -->
+        <div class="feature-block">
+          <p class="subhead">Second opinion from Claude</p>
+          <p class="note">
+            When on, messages the on-device check can't settle confidently are sent to Anthropic's
+            API using <em>your</em> API key, and Claude explains in plain language what the sender is
+            trying to do. Everything else stays on your device. There is no server in this project —
+            your key is stored locally and used only by this extension.
+          </p>
+
+          <label class="toggle">
+            <input type="checkbox" id="cloudTier" />
+            <span
+              ><strong>Ask Claude when the local check is uncertain</strong
+              ><small>Roughly 1 in 5 messages. Typical cost: well under a cent each.</small></span
+            >
+          </label>
+
+          <label class="field">
+            <span>Anthropic API key</span>
+            <div class="key-row">
+              <input id="apiKey" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" />
+              <button id="toggleKey" class="ghost small" type="button">Show</button>
+              <button id="testKey" class="ghost small" type="button">Test</button>
+            </div>
+            <small class="hint">
+              Create one at <span class="mono">console.anthropic.com</span> → API Keys. Stored only in
+              this browser.
+            </small>
+          </label>
+        </div>
+
+        <!-- ---- 2. Shortener resolution (new) ---- -->
+        <div class="feature-block">
+          <p class="subhead">Resolve shortened links<span class="badge">new</span></p>
+          <p class="note">
+            When on, and a message contains a link from a known shortening service — bit.ly,
+            tinyurl.com, and 17 others BaitWatch already recognises — the extension asks that service
+            directly where the link leads, before scoring it. That tells the shortening service which
+            link you're looking at, and shows it your computer's IP address. Nothing else about the
+            message goes anywhere. Only the <em>first</em> redirect is followed, never the pages after
+            it, so a link that hops through more than one shortener is only unwound once — see
+            rationale.md for why.
+          </p>
+
+          <label class="toggle">
+            <input type="checkbox" id="resolveShorteners" />
+            <span
+              ><strong>Look up where shortened links actually go</strong
+              ><small>Only for links from known shortening services — full list in Settings → About.</small></span
+            >
+          </label>
+        </div>
+
+        <!-- ---- 3. URLhaus feed (new) ---- -->
+        <div class="feature-block">
+          <p class="subhead">Check links against URLhaus<span class="badge">new</span></p>
+          <p class="note">
+            When on, the extension periodically downloads abuse.ch's public URLhaus list of known
+            malicious web addresses using your own free Auth-Key, and keeps a copy on this device. A
+            link in a message you're checking is compared against that local copy — the link itself is
+            never sent to abuse.ch or anyone else. The only thing abuse.ch sees is that this Auth-Key
+            downloaded their standard list, on the same schedule as every other user of it, unconnected
+            to any message you've looked at.
+          </p>
+
+          <label class="toggle">
+            <input type="checkbox" id="checkUrlhaus" />
+            <span
+              ><strong>Check links against URLhaus's malicious-link list</strong
+              ><small>Downloads a public threat list from abuse.ch; the links you check stay on your device.</small></span
+            >
+          </label>
+
+          <label class="field">
+            <span>abuse.ch Auth-Key</span>
+            <div class="key-row">
+              <input id="urlhausAuthKey" type="password" placeholder="Auth-Key…" autocomplete="off" spellcheck="false" />
+              <button id="toggleUrlhausKey" class="ghost small" type="button">Show</button>
+              <button id="testUrlhausKey" class="ghost small" type="button">Test</button>
+            </div>
+            <small class="hint">
+              Free at <span class="mono">auth.abuse.ch</span> — sign in with Google, GitHub, or
+              similar, then generate an Auth-Key under "Optional". abuse.ch requires this of every
+              user as of mid-2025; BaitWatch has no key of its own to share. Stored only in this
+              browser.
+            </small>
+          </label>
+          <p class="hint" id="urlhausSyncStatus">Not yet downloaded.</p>
+        </div>
+      </section>
+
+      <p id="saved" class="saved" hidden>Saved</p>
+    </main>
+  </body>
+</html>

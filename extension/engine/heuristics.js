@@ -99,6 +99,23 @@ const CREDENTIAL_ENTRY_RE = new RegExp(
   `\\b(?:enter|provide|confirm|verify|submit|update)\\b|${HI.enter}`
 );
 
+// Same-sentence gate, not "anywhere in the message" — a real crypto
+// brokerage's routine account email says "crypto" (their own product line,
+// often right in a legal-entity name like "Alpaca Crypto LLC") and,
+// completely separately, "invest" or "deposit" in unrelated boilerplate
+// ("please consider your investment objectives before you invest or deposit
+// funds"). An old unanchored AND fired on that with no ask anywhere in the
+// message. A scam always puts the currency and the ask in the same breath —
+// "send BTC", "double your Bitcoin" — so requiring them within one sentence
+// keeps the real cases (see the "crypto doubling" fixture in
+// tests/test_engine.mjs) and drops this one. Precompiled at module scope,
+// like every other rule's pattern, rather than rebuilt on every message.
+const CRYPTO_RE = String.raw`(?:bitcoin|btc|ethereum|eth|usdt|crypto(?:currency)?|wallet\s*address)`;
+const CRYPTO_VERB_RE = String.raw`(?:send|transfer|deposit|invest|double|pay|scan)`;
+const CRYPTO_TRANSFER_RE = new RegExp(
+  `\\b${CRYPTO_RE}\\b[^.!?]{0,40}\\b${CRYPTO_VERB_RE}\\b|\\b${CRYPTO_VERB_RE}\\b[^.!?]{0,40}\\b${CRYPTO_RE}\\b`
+);
+
 /**
  * Each rule is {id, weight, why, test}. `why` is written to be shown to a
  * non-technical user verbatim, so it explains the *risk*, not the regex.
@@ -138,21 +155,7 @@ const RULES = [
     id: "crypto_transfer",
     weight: 2.4,
     why: "It asks you to send cryptocurrency. Crypto payments cannot be reversed or recovered once sent.",
-    // Same-sentence gate, not "anywhere in the message" — a real crypto
-    // brokerage's routine account email says "crypto" (their own product
-    // line, often right in a legal-entity name like "Alpaca Crypto LLC")
-    // and, completely separately, "invest" or "deposit" in unrelated
-    // boilerplate ("please consider your investment objectives before you
-    // invest or deposit funds"). The old unanchored AND fired on that with
-    // no ask anywhere in the message. A scam always puts the currency and
-    // the ask in the same breath — "send BTC", "double your Bitcoin" — so
-    // requiring them within one sentence keeps the real cases (see the
-    // "crypto doubling" fixture in tests/test_engine.mjs) and drops this one.
-    test: (t) => {
-      const crypto = String.raw`(?:bitcoin|btc|ethereum|eth|usdt|crypto(?:currency)?|wallet\s*address)`;
-      const verb = String.raw`(?:send|transfer|deposit|invest|double|pay|scan)`;
-      return new RegExp(`\\b${crypto}\\b[^.!?]{0,40}\\b${verb}\\b|\\b${verb}\\b[^.!?]{0,40}\\b${crypto}\\b`).test(t);
-    },
+    test: (t) => CRYPTO_TRANSFER_RE.test(t),
   },
   {
     id: "upi_collect_request",

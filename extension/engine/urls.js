@@ -36,7 +36,12 @@ export const PROTECTED_BRANDS = [
   { name: "Income Tax India", domains: ["incometax.gov.in"], aliases: ["income tax department", "incometax.gov.in"] },
 ];
 
-const URL_SHORTENERS = new Set([
+// Also the set of origins `resolveShorteners` is allowed to contact — see
+// manifest.json's optional_host_permissions, which must list the same
+// domains by hand (Chrome requires them statically declared; there's no way
+// to derive a manifest from this at build time without a build step). A test
+// in tests/test_engine.mjs asserts the two lists match so they can't drift.
+export const URL_SHORTENERS = new Set([
   "bit.ly", "tinyurl.com", "goo.gl", "t.co", "ow.ly", "is.gd", "buff.ly",
   "rebrand.ly", "cutt.ly", "shorturl.at", "rb.gy", "tiny.cc", "bl.ink",
   "t.ly", "snip.ly", "s.id", "clck.ru", "u.to", "v.gd",

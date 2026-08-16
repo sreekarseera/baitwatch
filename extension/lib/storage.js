@@ -7,6 +7,9 @@ const DEFAULT_SETTINGS = {
   scanGeneric: true,
   cloudTier: false, // requires apiKey; off until the user opts in
   apiKey: "",
+  resolveShorteners: false, // requests the shortener's own origin, first hop only
+  checkUrlhaus: false, // matches against a downloaded feed, no per-link lookup; no key needed
+  urlhausAuthKey: "", // optional — the feed download doesn't require one today
   minSeverityToWarn: "suspicious", // "suspicious" | "dangerous"
   historyLimit: 500,
 };
@@ -118,4 +121,24 @@ export async function bumpStat(name) {
 export async function getStats() {
   const { stats = {} } = await chrome.storage.local.get("stats");
   return { scanned: 0, flagged: 0, cloudCalls: 0, ...stats };
+}
+
+/* -------------------------------- urlhaus feed ------------------------------ */
+// Data, not a preference — kept out of `settings` for the same reason history
+// isn't in there: it can be tens of thousands of entries and is rewritten on a
+// timer rather than by the user.
+
+export async function getUrlhausFeed() {
+  const { urlhausFeed = null } = await chrome.storage.local.get("urlhausFeed");
+  return urlhausFeed; // null until the first successful download
+}
+
+export async function saveUrlhausFeed(entries) {
+  const urlhausFeed = { updatedAt: Date.now(), entries };
+  await chrome.storage.local.set({ urlhausFeed });
+  return urlhausFeed;
+}
+
+export async function clearUrlhausFeed() {
+  await chrome.storage.local.remove("urlhausFeed");
 }

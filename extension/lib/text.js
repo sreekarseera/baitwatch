@@ -129,3 +129,15 @@ export function truncate(text, max = 60) {
   const flat = text.replace(/\s+/g, " ").trim();
   return flat.length > max ? flat.slice(0, max) + "…" : flat;
 }
+
+// Shared by options.js and popup.js, both of which render a feed-sync
+// timestamp — was two copies that could only ever drift apart, not two
+// independent implementations.
+export function relativeTime(epochMs) {
+  const diffMin = Math.round((Date.now() - epochMs) / 60000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.round(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  return `${Math.round(diffHr / 24)}d ago`;
+}
