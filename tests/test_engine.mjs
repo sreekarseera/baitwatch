@@ -64,6 +64,12 @@ const SCAMS = [
    "Verify your Microsoft account now: https://login.microsoft.com@account-verify.xyz/session"],
   ["credential phish, generic salutation",
    "Dear Customer, we detected unusual activity. Your account has been suspended. Confirm your password and card number here: http://bit.ly/verify-acct"],
+  ["prize lure, subject isn't literally \"you\"",
+   "Your email was selected to receive a charity grant of 950,000 pounds from our foundation. Provide your account for disbursement."],
+  ["OTP relay disguised as a rewards redemption",
+   "Credit card reward points worth 9,750 expiring today. Redeem now by sharing the confirmation code you receive on SMS."],
+  ["guaranteed-return investment pitch, plural verb",
+   "Dear investor, our advisory group guarantees 40 percent monthly returns on crypto. Start with a small deposit and withdraw anytime."],
 ];
 
 for (const [name, text] of SCAMS) {
@@ -99,6 +105,18 @@ const LEGIT = [
    "Reminder from IT: we will never ask for your password by email. If you receive such a request, report it to the helpdesk."],
   ["appointment",
    "Reminder: your dentist appointment is on Wednesday at 10 AM. Reply STOP to opt out of reminders."],
+  // Real false positive, reported live: crypto_transfer used to match "crypto"
+  // and "invest"/"deposit" anywhere in the message with no proximity check, so
+  // any crypto brokerage's routine legal footer tripped it even with no ask
+  // anywhere in the text. See docs/PROGRESS.md, 2026-08-16.
+  ["crypto brokerage legal footer, no ask anywhere in the message",
+   "Account Verification. Hey there — thanks for signing up to Alpaca's Trading API! To start trading with this account, please confirm your email. Confirm Email. Securities are offered through Alpaca Securities LLC. Crypto is offered through Alpaca Crypto LLC. Please carefully consider your investment objectives before you invest or deposit funds."],
+  // Also reported live: the model itself had never seen a legitimate example
+  // of "verify your email" — every occurrence of that phrase in the training
+  // ham rows was zero before 2026-08-16. Fixed with real training-data
+  // additions, not a rule; this is the regression test for that fix.
+  ["new-account verification email, no threat or urgency",
+   "Verify your email address. Please verify your email address to finish setting up your new Bitwarden account. Verify Email Address. If you did not request this email, you can safely ignore it. This link will expire in 24 hours."],
 ];
 
 for (const [name, text] of LEGIT) {

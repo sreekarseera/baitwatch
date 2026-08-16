@@ -3,7 +3,7 @@
 Where the project stands and what is worth doing next. For how it works, see
 the root [`README.md`](../README.md); this file is the running log.
 
-Last updated **2026-08-15**.
+Last updated **2026-08-16**.
 
 ## Current state
 
@@ -12,25 +12,279 @@ Last updated **2026-08-15**.
 | Repo | `github.com/sreekarseera/baitwatch` (public, MIT) |
 | Archive | `github.com/sreekarseera/baitwatch-archive` (private, the original 32-commit history) |
 | Detection | 24 heuristics + URL analysis + brand impersonation + on-device classifier |
-| Model | 3,498 rows, 94.43% validation, 94.20% ±1.52% five-fold CV, 6,000 terms, 264.5 KB |
-| Tests | 201 engine checks, model parity (tokens + predictions), 5 accuracy gates, 29 adapter checks, 20 browser checks |
+| Model | 3,524 rows, 93.62% validation, 94.15% ±0.65% five-fold CV, 6,000 terms, 264.3 KB |
+| Tests | 226 engine checks, model parity (tokens + predictions), 5 accuracy gates, 29 adapter checks, 20 browser checks |
 
 Measured accuracy, from `node tests/test_benchmark.mjs`:
 
 | | rate |
 |---|---|
-| legitimate mail flagged | 1.03% |
-| …called *dangerous* | 0.34% |
-| targeted scams missed | 7.65% |
-| Hinglish/Hindi scams missed | 10.70% |
-| …devanagari alone | 17/162 |
-| false alarms on ordinary Hinglish | 1/119 |
+| legitimate mail flagged | 1.18% |
+| …called *dangerous* | 0.28% |
+| targeted scams missed | 7.95% |
+| Hinglish/Hindi scams missed | 11.23% |
+| …devanagari alone | 18/162 |
+| false alarms on ordinary Hinglish | 2/119 |
 
-Validation accuracy and false-positive rate both moved against 2026-08-06's
-numbers — worth reading before assuming a regression. Both are true at once:
-the corpus is harder now (250 more Devanagari rows, most of them scam
-messages the old 16-row set couldn't represent), and the whole engine catches
-far more of them than before. See 2026-08-15 below.
+Validation accuracy and false-positive rate have both moved more than once
+this month — worth reading the dated entries below before assuming a
+regression rather than a deliberate, benchmarked tradeoff. Most recently,
+2026-08-16's real-world false-positive fixes traded a small amount of
+Hinglish/Hindi recall (10.70% → 11.23% missed, still inside the 20% gate) for
+fully fixing two confirmed false positives on ordinary account-verification
+email — see that section for the two rounds this took and the heuristic gaps
+a closer look at the resulting benchmark exposed along the way.
+
+## 2026-08-16
+
+**Two real false positives, reported live by a user, fixed — one a rule bug,
+one a training-data gap.** A Bitwarden account-verification email and an
+Alpaca (crypto/stock trading) verification email were both flagged as
+scams. Reproduced from real screenshots rather than guessed, and root-caused
+before touching anything.
+
+**Alpaca — `crypto_transfer` had no proximity requirement.** The rule fired
+whenever a crypto keyword (`crypto`, `bitcoin`, ...) and a verb like
+`invest`/`deposit` both appeared *anywhere* in the message, in any order, any
+distance apart. A crypto brokerage's routine legal footer — "Crypto is
+offered through Alpaca Crypto LLC... please consider your investment
+objectives before you invest or deposit funds" — satisfies both halves
+without the message ever asking anyone to send anything. Fixed by requiring
+both within the same sentence (`[^.!?]{0,40}` either order), the same gating
+pattern `prize_or_windfall` and `advance_fee` already use for exactly this
+failure mode. Real crypto-doubling scams (currency and verb in the same
+breath, e.g. "Send BTC to this wallet") are unaffected.
+
+Tightening it exposed a second bug: one curated training row ("guarantees 40
+percent monthly returns on crypto... small deposit") had only ever been
+caught *by* the loose `crypto_transfer` match, not by `investment_scam`,
+which should have caught it and didn't — its
+`\bguarantee(?:d)?\s*(?:return|profit|income)\b` pattern matched neither the
+plural "guarantees" (word-boundary fails right before the trailing "s") nor
+"returns" (same issue), and required the two words directly adjacent with no
+gap. Fixed both: `guarantee[ds]?` plus a same-sentence gate instead of `\s*`.
+The row is now caught for the right reason.
+
+**Bitwarden — not a rule bug at all.** The model itself reads "verify" /
+"email" / "confirm" as scam-leaning vocabulary with real confidence (88–93%
+on a reconstructed version of the email), because every single occurrence of
+"verify" in `training/curated.csv`'s legitimate (label 0) rows was zero
+before today — literally every curated example of that word was a phishing
+row. The training corpus predates the now-ubiquitous "verify your email to
+finish signing up" SaaS onboarding pattern; the closest legitimate real
+example available was a live "Welcome to Bitwarden!" screenshot from the
+reporting user.
+
+First attempt at a fix (27 new curated ham rows, one per well-known service)
+over-corrected: nearly all of them shared the same "Welcome to X! ...
+verify/confirm your email..." skeleton, which is the exact
+near-duplicate-template failure this project's own history already flagged
+once (see 2026-08-15's Devanagari corpus draft). It fixed both reported cases
+completely but pushed `targeted scams missed` from 7.65% to 8.26%, over the
+benchmark's own gate — measured, not assumed, so it wasn't shipped as-is.
+
+Replaced with 11 rows: fewer, more structurally varied (different openers,
+lengths, and services), but — since the vectorizer uses bigrams
+(`ngram_range=(1,2)`, `min_df=3`) — deliberately including 3+ rows that share
+the phrase "verify your ... new account" so that distinguishing bigram
+actually survives the frequency cutoff instead of every phrase being unique
+and none of them surviving. Net effect: Alpaca now scores 21 (safe, was 68);
+the Bitwarden reconstruction moved from 64 ("suspicious", borderline
+dangerous) to 53 ("suspicious", further from the line) — improved but not
+eliminated. Chasing full elimination further was deliberately not pursued
+this round: each training-data change perturbs the whole shared TF-IDF space,
+and the intermediate attempts visibly moved the Hinglish/Hindi miss rate
+around (10.16% → 11.76% → the final 11.76%) as a side effect of changes that
+had nothing to do with Hindi. That's the real cost of this kind of fix, not
+a one-time nuisance — more of it should happen deliberately, with the
+benchmark checked every step, not as a way to fully close one score.
+
+Retrained: validation 94.43% → 95.73%, 5-fold CV 94.20% ±1.52% → 93.76%
+±2.21% (wider variance — expected, `curated.csv` grew by only 11 rows against
+3,509 total). All five benchmark gates still pass; see the table at the top
+for the exact before/after. 218/218 engine checks, parity, and 29/29 adapter
+checks unaffected.
+
+**Follow-up round, same day: pushed the corpus work further and it closed
+the gap.** Asked to keep training rather than stop at "improved." Added 15
+more curated ham rows on the same "new account, verify your email" pattern —
+still varied in structure (different openers, lengths, tone), but this time
+deliberately keeping the phrase "new account" in several of them rather than
+diversifying it away too, since the vectorizer's bigrams (`ngram_range=(1,2)`,
+`min_df=3`) can only learn a distinguishing phrase if enough rows share it to
+clear the frequency floor — full diversification actively works against that.
+Retrained: the Bitwarden reconstruction reached 32 ("safe"), Alpaca 14
+("safe").
+
+That pushed `targeted scams missed` over gate again (8.56%, limit 8.00%) —
+checked immediately rather than declared done, per the whole reason this gate
+exists. This time the newly-exposed misses weren't collateral damage from the
+model shift; they were two more real, independent regex gaps in rules that
+should already have caught them, the same class of bug as `crypto_transfer`
+and `investment_scam` earlier in the day:
+
+- `prize_or_windfall` required the literal word "you" immediately before
+  "selected/chosen" (`you(?:'ve| have)?\s*(?:been\s*)?(?:won|...)`), so "Your
+  email **was selected** to receive a charity grant" — same lure, different
+  subject — matched nothing. Added a `(?:was|has\s*been|have\s*been)\s*
+  (?:selected|chosen)\s*to\s*receive` alternative.
+- `credential_request`'s two building blocks both had word-form gaps:
+  `CREDENTIAL_NOUN_RE` had no entry for "confirmation code" or "verification
+  code" (only "otp", "security code", literal "one-time code"), and
+  `CREDENTIAL_TRANSMIT_RE`'s `share\s+(?:your|the|it|with)` couldn't match
+  "shar**ing**" for the same reason `guarantee(?:d)?\b` couldn't match
+  "guarantees" earlier — `\b` needs a boundary immediately after the matched
+  word, and neither form has one before its own suffix. "Redeem now by
+  **sharing** the **confirmation code** you receive on SMS" — an OTP-relay
+  scam wearing a rewards-program costume — matched neither piece. Fixed both.
+
+Retrained once more after the regex fixes (no new corpus changes needed) and
+the gate passed clean: 26/327 (7.95%), un-regressed from where it stood
+before this whole investigation started. Final state: both real false
+positives fixed to "safe," all five benchmark gates pass, 226/226 engine
+checks (8 new — regression tests for all four bugs, not just the two
+reported ones, so none of this quietly regresses later), parity, and 29/29
+adapter checks all green.
+
+The pattern worth remembering from today, stated once rather than three
+times: every one of the four regex bugs found (`crypto_transfer`,
+`investment_scam`, `prize_or_windfall`, `credential_request`'s two helper
+patterns) was a rule that looked like it covered a case and silently didn't —
+missing plurals, missing word-forms, missing proximity constraints, or an
+assumed sentence subject that wasn't always there. None were found by
+auditing the rules file; all four were found by chasing one specific reported
+failure until the actual regex was read character by character. The
+model-authority tradeoff documented above (a small amount of the ceiling
+`MODEL_MAX_PULL` still commands on near-stopword vocabulary) is the one part
+of today's investigation that turned out not to be a bug — it's a deliberate
+design choice from 2026-08-05, made for a good, still-valid reason, and nudged
+rather than removed.
+
+**Network-consent design implemented, not just designed.** The three toggles
+from `wip/network-consent-design` (Claude second opinion, shortener
+resolution, URLhaus feed) are wired into `extension/options/options.html` /
+`options.js` as a shared "Network features" section, each requesting and
+releasing its own `optional_host_permissions` origins exactly the way
+`cloudTier` already did — see `rationale.md`'s point that collapsing them
+into one switch would make at least one toggle's copy false the moment
+another is off. `manifest.json` gained the 19 shortener origins plus
+`urlhaus-api.abuse.ch`, and the base `permissions` list gained `alarms` (for
+the feed's periodic refresh) and `webRequest` (see below).
+
+**One platform detail the design doc didn't reach: `redirect: "manual"`
+cannot actually read where a link goes.** The design's Question 1 resolved
+*which* redirect to follow (first hop only); it didn't get as far as *how* to
+read it. `fetch(url, { redirect: "manual" })` returns an opaque-redirect
+Response whose headers — including `Location` — are inaccessible by platform
+design, even with host permission for the origin, because the filtering
+happens before extension code sees the response at all. The actual working
+mechanism is `chrome.webRequest.onBeforeRedirect`, which observes the wire
+rather than the fetch Response and exposes `redirectUrl` directly —
+implemented in `extension/engine/shortener.js`'s `resolveFirstHop()`. This
+needed adding `"webRequest"` to the manifest's base permissions (it grants no
+network access by itself; actual observation is still gated by the
+already-optional host permission for the specific origin).
+
+**The URLhaus feed endpoint was a flagged guess, then a wrong guess, then a
+verified one — in that order, same day.** The first guess
+(`v2/urls/exports/{key}/recent.csv`) 404s: wrong resource, confirmable
+without a real key since a 404 doesn't need one. The real anonymous endpoint
+is `https://urlhaus.abuse.ch/downloads/csv_recent/` — `curl` against it
+returns 200 with the live feed, no Auth-Key, right now, contradicting
+`rationale.md`'s reasonable-at-the-time assumption that the mid-2025
+"Auth-Key mandatory" mandate would cover it (their downloads page 403s an
+automated fetch without a browser User-Agent, which is why that document
+couldn't check). `URLHAUS_FEED_URL` in `extension/engine/urlhaus.js` now
+points at the real path; the Auth-Key field became optional throughout
+(`storage.js`, `options.html`, `options.js`, `service-worker.js`) rather than
+required, since it plainly isn't one. `parseFeed()` needed no changes for
+any of this — reusing `extractUrls()` per line rather than assuming a fixed
+CSV column layout meant the real format (a `#`-commented header block, then
+quoted CSV rows) parsed correctly on the first try against real fetched data
+(16,928 URLs).
+
+**Both new network calls were kept out of the "local" analysis path.**
+`analyzeLocal()` gained an `urlhausFeed` option (a pure local-storage lookup,
+matched with `matchUrlhaus()`) but stayed synchronous-in-spirit; shortener
+resolution is a real network call, so it lives in `analyze()` as an opt-in
+step before the local layers run, the same shape as the existing `cloud`
+callback. A resolved destination is folded into `extraUrls` so the *actual*
+link — not the shortener's own domain — gets scored by the existing URL
+heuristics; a confirmed URLhaus hit scores as a `urlhaus_match` signal
+(weight 4.0, enough to convict alone on the cases tested, though not
+provably immune to a maximally negative model pull — see `MODEL_MAX_PULL` in
+`engine.js`).
+
+**Popup copy updated to stay literally true per-result.** `describeTier()`
+now appends a shortener-contacted note only when `result.shortenerResolved`
+is set on *that* result, matching rationale.md's Question 3: `checkUrlhaus`
+needs no per-result copy at all, because it matches a feed already in storage
+and never calls out while a specific message is being scored.
+`renderFooter()` now joins whichever of the three features are actually on
+instead of collapsing to a boolean.
+
+218/218 engine checks pass (17 new: a manifest/`URL_SHORTENERS` drift check,
+`isShortenerUrl`, `parseFeed`, `matchUrlhaus`, a `urlhaus_match` conviction
+case, and shortener-resolution wiring including a resolver that throws).
+All five benchmark gates, parity, and 29/29 adapter checks are unaffected —
+both features are no-ops until their toggle and permission are both live.
+
+**The browser layer actually ran, for the first time in this environment —
+and caught something, though not in the new code.** `run_all.py`'s note that
+branded Chrome 137+ refuses `--load-extension` turned out not to be a hard
+stop: `npx @puppeteer/browsers install chrome@stable` fetches Chrome for
+Testing, needs no account, and `CHROME_BIN=<path> python3 tests/run_all.py`
+runs all 20 browser checks that had only ever been skipped before. First run
+against this branch failed 12 of them (`.baitwatch-warning` never appeared,
+history stayed empty); re-running the *unmodified* `main` branch against the
+same Chrome for Testing binary reproduced nothing — 20/20 clean — which ruled
+out the manifest/service-worker changes as the cause before assuming it.
+Two more runs against this branch afterward both passed 20/20 clean, which
+points at one-off flakiness (plausibly Chrome for Testing's own cold start)
+rather than something introduced here — but that's an inference from
+absence, not a proven root cause, and it's the kind of intermittent failure
+worth someone's attention if it recurs.
+
+**What that first run confirmed, and what got checked afterward by driving
+the two new features live instead of stopping there.** The `run_all.py` run
+confirmed the base extension — manifest, service worker boot, content-script
+injection, whole-page scan — works with the added permissions sitting
+unused. That's necessary but not sufficient, so both new features were then
+exercised directly against real external services, not mocks:
+
+*Shortener resolution.* A real short link was created via `is.gd`'s
+anonymous create API (`is.gd/AG3Hwv` → `example.com`, confirmed by `curl -I`)
+and fed to `resolveFirstHop()` running inside a real loaded extension (a
+disposable `/tmp` copy with the shortener origin moved to mandatory
+`host_permissions`, to get around a separate limitation below). It correctly
+returned `example.com` — the `chrome.webRequest.onBeforeRedirect` mechanism
+works as designed.
+
+*The URLhaus pipeline, end to end.* With `checkUrlhaus` forced on and the
+real `REFRESH_URLHAUS` message handler called on a loaded extension, the
+extension's own `fetch()` → `parseFeed()` → `chrome.storage.local` pipeline
+landed 16,930 real entries with no code changes — first attempt hit HTTP 405
+"Banned" from Fastly's edge, reproduced identically on a bare
+`Page.navigate()` to the same URL with *no extension involved at all*, and
+isolated to **headless** Chrome specifically: the identical request from a
+non-headless (windowed) Chrome for Testing instance got a clean 200. This is
+a known bot-defense fingerprint on headless automation, not a defect in the
+extension — but it means `run_all.py`'s browser layer (which runs headless)
+would reliably show a false failure if this feature were added to it, and
+that shouldn't be mistaken for a regression if it recurs.
+
+*What's still genuinely unverified, and why it can't be closed from here.*
+The permission-*request* round-trip itself — clicking a toggle, Chrome
+showing the native optional-permission prompt, a person accepting or
+declining it — could not be driven through CDP automation at all. Confirmed,
+not assumed: a real trusted click was dispatched at the actual checkbox (via
+`Input.dispatchMouseEvent`, after the first attempt silently missed because
+the element was outside headless Chrome's default viewport), the checkbox's
+own visual state toggled, and `chrome.permissions.request()` still hadn't
+resolved 23 seconds later. The permission bubble is native browser chrome,
+not a DOM element, so no CDP `Input` event can reach it — headless or
+headed, this specific gap needs an actual person clicking Allow/Deny, which
+is a live-usage check, not a testing-environment limitation to work around.
 
 ## 2026-08-15
 
@@ -118,9 +372,7 @@ new ones covering real tactic diversity for the first time. All five gates
 pass; `python3 tests/run_all.py` is green apart from the browser layer, which
 still needs Chrome for Testing outside this environment.
 
-**Not yet done:** none of this is committed past the
-`wip/devanagari-corpus-draft` branch, and nothing is merged into `main` or
-pushed. The network-consent design (see `docs/design/network-consent/` on
+The network-consent design (see `docs/design/network-consent/` on
 `wip/network-consent-design`) was also redone the same way — three
 independent toggles, no master switch — and this time actually resolved its
 three open questions instead of leaving them for later: shortener resolution
@@ -129,7 +381,13 @@ can grant), URLhaus moved from a live per-URL query to a downloaded feed
 entirely (their API has no hash-based lookup and has required an auth key on
 every call since June 2025, so hashing would not have bought anonymity
 anyway), and `describeTier()`'s disclosure text was drafted for both new
-toggles. Still design-only — nothing wired into `extension/options/`.
+toggles. Implemented 2026-08-16, see below.
+
+*Correction, 2026-08-16:* this section originally said the Devanagari corpus
+work was uncommitted and unpushed. That was wrong by the time it was written
+— `f3ce03c` (the corpus + rule fixes) was already the tip of `main` and
+`origin/main`. Caught only when asked directly to double check; this file is
+not self-verifying, `git log` is.
 
 ## 2026-08-09
 
@@ -409,18 +667,33 @@ a *new* feature, not by looking for bugs.
 
 ## Next
 
-**Merge `wip/devanagari-corpus-draft` into `main`.** Done and gate-passing
-(see 2026-08-15) but not yet merged or pushed — the corpus, retrained model,
-~25 heuristic-rule fixes, and one updated test all sit on the branch as
-uncommitted or branch-local work. Nothing has touched `main`.
+**Commit and merge today's work.** Two independent pieces of 2026-08-16's
+work are both done, tested, and still sitting as uncommitted working-tree
+changes: the network-consent implementation (below) and the accuracy fixes
+(crypto_transfer/investment_scam/prize_or_windfall/credential_request regex
+bugs, plus the training-data additions that fixed the Bitwarden/Alpaca false
+positives). Neither depends on the other; either can go first. The one
+open item below (clicking through the two new toggles) blocks merging the
+network-consent half specifically, not the accuracy fixes.
 
-**Implement the network-features consent UI.** The design is finished (see
-2026-08-15 and `docs/design/network-consent/` on `wip/network-consent-design`)
-down to the toggle structure, storage keys, permission origins, and
-`describeTier()` disclosure text — what's left is wiring it into
-`extension/options/`, plus actually building shortener resolution
-(first-hop only) and the URLhaus downloaded-feed check behind it. Pure
-implementation at this point, not design.
+**Click through the two new toggles as an actual person, once.** This is the
+one piece of 2026-08-16's work that could not be closed from here — not
+because it needs an account or a key (that turned out to be false for
+URLhaus, and shortener resolution needs neither), but because
+`chrome.permissions.request()`'s consent bubble is native browser chrome,
+outside anything CDP's `Input` domain can click. Everything downstream of a
+granted permission is now verified end to end (real `is.gd` redirect
+resolved correctly; the URLhaus fetch → parse → storage pipeline landed
+16,930 real entries) — what's left is confirming the grant/revoke prompts
+themselves render sensibly and that a real person can act on them. Turn on
+`resolveShorteners` and `checkUrlhaus` in a normal (non-automated) Chrome
+profile with this extension loaded, accept both prompts, and check the
+options page's status lines and the popup footer read correctly afterward.
+
+**Merge the network-consent implementation (2026-08-16) into `main`** once
+the item above is done. It's currently uncommitted working-tree changes
+only. (The Devanagari corpus work is separate and already on `main` and
+pushed — see the 2026-08-15 correction above.)
 
 **More Devanagari rows, if the miss rate needs to come down further.**
 17/162 Devanagari scams are still missed after today's pass — well inside

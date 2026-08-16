@@ -76,7 +76,7 @@ const HI = {
 };
 
 const CREDENTIAL_NOUN_RE =
-  /\b(?:password|passcode|pin(?:\s*(?:number|code))?|otp|one[\s-]?time\s*(?:password|code|pin)|cvv|card\s*(?:number|details)|security\s*code|seed\s*phrase|recovery\s*phrase|private\s*key|aadhaar|ssn|social\s*security)\b|ओटीपी|पिन|आधार|पासवर्ड/;
+  /\b(?:password|passcode|pin(?:\s*(?:number|code))?|otp|one[\s-]?time\s*(?:password|code|pin)|cvv|card\s*(?:number|details)|security\s*code|(?:confirmation|verification)\s*code|seed\s*phrase|recovery\s*phrase|private\s*key|aadhaar|ssn|social\s*security)\b|ओटीपी|पिन|आधार|पासवर्ड/;
 
 // The secret leaving your possession, *towards whoever is asking*. The
 // direction is the whole signal: "send OTP to your registered mobile" is a real
@@ -86,7 +86,7 @@ const CREDENTIAL_NOUN_RE =
 // form of every site in the world.
 const CREDENTIAL_TRANSMIT_RE = new RegExp(
   "\\b(?:(?:send|forward|give|tell|text|whatsapp|email|message)\\s+(?:it\\s+)?(?:me|us|back|to\\s+(?:me|us))" +
-    "|share\\s+(?:your|the|it|with)|reply\\s+(?:with|back\\s+with)|revert\\s+with|provide\\s+(?:me|us))\\b" +
+    "|shar(?:e|ing)\\s+(?:your|the|it|with)|reply\\s+(?:with|back\\s+with)|revert\\s+with|provide\\s+(?:me|us))\\b" +
     // Hinglish has no indirect-object cue to lean on the way English does:
     // "OTP bhejiye" is already the entire request, with no "me" in it. The
     // imperative form carries the direction on its own.
@@ -138,9 +138,21 @@ const RULES = [
     id: "crypto_transfer",
     weight: 2.4,
     why: "It asks you to send cryptocurrency. Crypto payments cannot be reversed or recovered once sent.",
-    test: (t) =>
-      /\b(?:bitcoin|btc|ethereum|eth|usdt|crypto(?:currency)?|wallet\s*address)\b/.test(t) &&
-      /\b(?:send|transfer|deposit|invest|double|pay|scan)\b/.test(t),
+    // Same-sentence gate, not "anywhere in the message" — a real crypto
+    // brokerage's routine account email says "crypto" (their own product
+    // line, often right in a legal-entity name like "Alpaca Crypto LLC")
+    // and, completely separately, "invest" or "deposit" in unrelated
+    // boilerplate ("please consider your investment objectives before you
+    // invest or deposit funds"). The old unanchored AND fired on that with
+    // no ask anywhere in the message. A scam always puts the currency and
+    // the ask in the same breath — "send BTC", "double your Bitcoin" — so
+    // requiring them within one sentence keeps the real cases (see the
+    // "crypto doubling" fixture in tests/test_engine.mjs) and drops this one.
+    test: (t) => {
+      const crypto = String.raw`(?:bitcoin|btc|ethereum|eth|usdt|crypto(?:currency)?|wallet\s*address)`;
+      const verb = String.raw`(?:send|transfer|deposit|invest|double|pay|scan)`;
+      return new RegExp(`\\b${crypto}\\b[^.!?]{0,40}\\b${verb}\\b|\\b${verb}\\b[^.!?]{0,40}\\b${crypto}\\b`).test(t);
+    },
   },
   {
     id: "upi_collect_request",
@@ -184,7 +196,10 @@ const RULES = [
     weight: 1.9,
     why: "It says you've won something you never entered, or money is waiting for you. Unsolicited winnings are a lure to collect your details or an upfront \"fee\".",
     test: (t) =>
-      /\b(?:you(?:'ve| have)?\s*(?:been\s*)?(?:won|win|selected|chosen)|congratulations|lucky\s*winner|claim\s*your\s*(?:prize|reward|gift)|lottery|jackpot|unclaimed\s*(?:funds|money|refund)|inherit(?:ance|ed))\b/.test(t) ||
+      // The subject isn't always literally "you" — "your email/number/name
+      // was selected" is the same lure with the pronoun swapped out, and the
+      // old pattern required "you" right before "selected/chosen" to match.
+      /\b(?:you(?:'ve| have)?\s*(?:been\s*)?(?:won|win|selected|chosen)|(?:was|has\s*been|have\s*been)\s*(?:selected|chosen)\s*to\s*receive|congratulations|lucky\s*winner|claim\s*your\s*(?:prize|reward|gift)|lottery|jackpot|unclaimed\s*(?:funds|money|refund)|inherit(?:ance|ed))\b/.test(t) ||
       new RegExp(HI.prize).test(t) ||
       // Devanagari-spelled loanwords for the same "unexpected money is
       // waiting" lure — refunds, reward points, cashback, and bonuses that
@@ -391,7 +406,15 @@ const RULES = [
     weight: 2.2,
     why: "It promises a guaranteed or unusually high return on an investment. Real investments carry risk — nobody can guarantee a return, and this is the setup for a payout that never comes.",
     test: (t) =>
-      /\bguarantee(?:d)?\s*(?:return|profit|income)\b|double\s*(?:your\s*)?money|assured\s*returns?/.test(t) ||
+      // "guarantee(s/d) ... return/profit/income" gated within a sentence,
+      // not requiring the words to sit directly next to each other — real
+      // pitches say "guarantees 40 percent monthly returns", not "guaranteed
+      // return". The old \bguarantee(?:d)?\s*(?:return|profit|income)\b
+      // matched neither: no plural "guarantees", and \s* meant zero or more
+      // *whitespace* characters, not zero or more words — "returns" itself
+      // was also never matched since the noun side had no plural either.
+      /\bguarantee[ds]?\b[^.!?]{0,30}\b(?:returns?|profits?|income)\b/.test(t) ||
+      /double\s*(?:your\s*)?money|assured\s*returns?/.test(t) ||
       // गारंटीड रिटर्न / पैसा डबल / डेली प्रॉफिट — none of this needs a
       // digit to be recognisable, which matters because normalize() folds
       // digits onto letters ("40%" survives as letters, not as "40").
