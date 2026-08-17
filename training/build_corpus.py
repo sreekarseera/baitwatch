@@ -28,7 +28,10 @@ curated-hinglish.csv adds the same tactics in Roman-script Hindi and
 Devanagari. The Devanagari rows still do almost nothing for the model, but the
 reason has changed and is now worth acting on. It used to be the tokenizer,
 which could not see Hindi script at all; that is fixed. It is now simply that
-there are 16 of them against 3,248 rows, so no Hindi term is in three
+there are now 170 of them against 3,603 rows, which finally puts 65 Hindi
+terms in the vocabulary — but nearly all are function words, since those clear
+min_df first. Before the 2026-08-17 corpus it was 16 rows against 3,248, so no
+Hindi term was in three
 documents and survives the 6,000-feature cap, and the model has no weight for
 a single one. They are here for the rule layer and the benchmark, and the fix
 is more Devanagari rows rather than another change to the vectorizer.

@@ -98,7 +98,8 @@ const curatedScams = [...load("curated.csv"), ...load("curated-hinglish.csv")].f
 
 // Roman-script Hindi is how most Indian scam messages are actually written, and
 // Devanagari is graded separately from it because the two fail differently: the
-// rules cover both, but the model contributes nothing on Hindi script. The
+// rules cover both, but the model contributes almost nothing on Hindi script
+// (65 of 6,000 vocabulary terms, nearly all function words). The
 // tokenizer reads it now; the vocabulary has no Hindi in it, because 16
 // Devanagari rows in the corpus cannot survive min_df=3 and a 6,000-feature
 // cap. Splitting the two is what would show that changing.

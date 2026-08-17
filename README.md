@@ -426,7 +426,9 @@ what it measured, and what is worth doing next.
   vowel signs are Marks, so "खाता" tokenized to nothing and "आपका" to the
   fragment "आपक". Both sides now keep Indic marks attached to their base
   letters and the tokens are correct. The vocabulary is not: the corpus holds
-  16 Devanagari rows against 3,248, so no Hindi term appears in the three
+  170 Devanagari rows against 3,603 now put 65 Hindi terms in the vocabulary,
+  nearly all of them function words. Before the 2026-08-17 corpus it was
+  16 rows against 3,248, so no Hindi term appeared in the three
   documents `min_df` requires *and* survives the 6,000-feature cap, and the
   model has a weight for exactly zero of them. It abstains, and Hindi-script
   messages still rest on the rule layer alone. This is now a dataset problem,

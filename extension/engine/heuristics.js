@@ -20,10 +20,14 @@ import { normalize } from "../lib/text.js";
 // Both scripts can be covered here because heuristics run regexes over
 // normalize()'d text and never tokenize, which is what let this layer cover
 // Devanagari back when the tokenizer could not. The tokenizer reads it now
-// (see INDIC_MARKS in lib/text.js), but the model layer is still the one that
-// contributes nothing on Hindi script — the corpus has too few Devanagari rows
-// for a single Hindi term to reach the vocabulary. These rules remain the only
-// thing standing between a Hindi-script scam and the user.
+// (see INDIC_MARKS in lib/text.js), and as of the 2026-08-17 corpus the model
+// has a toehold in Devanagari at last: 65 of its 6,000 terms carry Hindi
+// script, where previously none did. Do not read that as coverage. They are
+// overwhelmingly function words — आपका, इस, और, कर — because those are what
+// clear min_df=3 first; almost no discriminative scam vocabulary is among them.
+// So these rules still carry effectively all of the Hindi-script detection, and
+// a Hindi tactic nobody has written a rule for has no model underneath it to
+// catch what they miss, the way there is in English.
 //
 // Transliteration has no agreed spelling — "bhejiye", "bhejo", "bhej do" are
 // one word — so stems are used where the stem is distinctive enough to be safe
