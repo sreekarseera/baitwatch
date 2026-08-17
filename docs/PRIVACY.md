@@ -1,6 +1,6 @@
 # BaitWatch privacy policy
 
-Last updated: 6 August 2026. Applies to BaitWatch version 2.0.0.
+Last updated: 6 August 2026. Applies to BaitWatch version 2.1.0.
 
 BaitWatch is an open-source browser extension that reads messages you are
 already looking at and tells you whether they look like a scam. This document

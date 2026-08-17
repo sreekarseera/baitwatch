@@ -300,8 +300,14 @@ def browser_smoke():
             if manifest_version:
                 break
             time.sleep(0.25)
-        check("service worker has extension APIs", manifest_version == "2.0.0",
-              f"getManifest().version = {manifest_version!r}")
+        # Read from the manifest rather than hardcoding: the point of this check
+        # is that the service worker can reach chrome.runtime at all, not what
+        # release it happens to be, and a literal here silently fails the whole
+        # browser suite on every version bump.
+        with open(os.path.join(EXTENSION, "manifest.json"), encoding="utf-8") as mf:
+            expected_version = json.load(mf)["version"]
+        check("service worker has extension APIs", manifest_version == expected_version,
+              f"getManifest().version = {manifest_version!r}, expected {expected_version!r}")
 
         # The extension's central claim is that a fresh install can reach
         # nothing. api.anthropic.com is an optional host permission, requested
