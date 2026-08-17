@@ -13,7 +13,7 @@ Last updated **2026-08-17**.
 | Archive | `github.com/sreekarseera/baitwatch-archive` (private, the original 32-commit history) |
 | Detection | 24 heuristics + URL analysis + brand impersonation + on-device classifier |
 | Model | 3,603 rows, 94.31% validation, 93.81% ±0.88% five-fold CV, 6,000 terms, 263.9 KB |
-| Tests | 264 engine checks, model parity (tokens + predictions), 5 accuracy gates, 3 held-out gates, 29 adapter checks, 20 browser checks |
+| Tests | 272 engine checks, model parity (tokens + predictions), 5 accuracy gates, 3 held-out gates, 29 adapter checks, 20 browser checks |
 
 Measured accuracy, from `node tests/test_benchmark.mjs`:
 
@@ -21,9 +21,9 @@ Measured accuracy, from `node tests/test_benchmark.mjs`:
 |---|---|
 | legitimate mail flagged | 0.98% |
 | …called *dangerous* | 0.22% |
-| targeted scams missed | 4.35% |
-| Hinglish/Hindi scams missed | 4.00% |
-| …devanagari alone | 6/170 |
+| targeted scams missed | 2.61% |
+| Hinglish/Hindi scams missed | 1.00% |
+| …devanagari alone | 0/170 |
 | false alarms on ordinary Hinglish | 1/122 |
 
 And from `node tests/test_holdout.mjs`, which is the number to trust for
@@ -31,7 +31,7 @@ false positives — the benchmark above grades the model on rows it trained on:
 
 | | rate |
 |---|---|
-| held-out legitimate mail flagged | 0/54 |
+| held-out legitimate mail flagged | 0/61 |
 | held-out real websites flagged | 0/16 |
 
 Validation accuracy and false-positive rate have both moved more than once
@@ -106,12 +106,54 @@ for "never share your OTP" and exactly wrong for a secrecy demand. It now only
 strips where a credential noun is actually nearby — which improved detection
 again on its own, since that clause had been suppressing `secrecy_request`.
 
-**Result: targeted scams missed 7.83% → 4.35%, Hinglish/Hindi 10.50% → 4.00%,
-Devanagari 19/170 → 6/170, with false positives *down* (1.06% → 0.98%) and the
-held-out set still 0/54 and 0/16.** 12 more regression tests (252 → 264), each
-pinning the vocabulary gap rather than the rate, and the expiry pair kept
-together so "a Devanagari verification code that expires is not urgency" sits
-beside "a Devanagari *account* expiring still counts". Full suite green.
+That took Devanagari from 19/170 to 6/170. The last six each fired *nothing*,
+and clearing them turned up the most broadly useful bug of the day.
+
+**A decimal point in an amount was silently splitting sentences, and with them
+most of the rule layer.** Nearly every rule gates on `[^.!?]{0,N}` to mean
+"within one sentence". `normalize()` folds digits onto letters but leaves their
+punctuation alone, so "Rs 2,450.00" arrives as "rs 2,aso.oo" and "1.5 लाख" as
+"l.s लाख" — each carrying a full stop that cuts the sentence in half and puts
+the two halves of a rule out of reach of each other. A loan advance-fee scam
+went unflagged purely because the approved amount was written "1.5 लाख". Fixed
+by dropping separators *inside* a number before normalizing, in
+`analyzeHeuristics` rather than in `normalize()` — the latter is shared with the
+tokenizer and has to keep matching `train_model.py`'s, per `test_parity.py` —
+and before folding, because afterwards "1.5" reads as "l.s" and is no longer
+distinguishable from an abbreviation. This one change took Devanagari 6 → 5 and
+targeted scams 4.35% → 4.06% by itself, and it applies to every amount in every
+language, not just this row.
+
+**The remaining five were each a rule that had the tactic right and the nouns
+wrong**: the OLX collect-request scam ("I'm sending payment, just accept the
+request on your screen") names no UPI app at all, so the brand-name gate could
+never reach it; a refund lure that never says "रिफंड", only "वापस पाने"; a
+scheme asking you to upload a bank *passbook*; an IFSC-code harvest that never
+says "bank account"; and a telecom cut-off whose account word sits too far from
+its threat for the proximity window.
+
+**Two of those five were too loose on the first attempt, and adversarial legit
+mail caught it before the benchmark did.** "मीटिंग रिक्वेस्ट एक्सेप्ट कर दीजिए"
+— a calendar invite — is the identical imperative to the collect-request scam
+and scored 35, and "रखरखाव के कारण सेवाएं बंद रहेंगी" — a maintenance window —
+states the same outcome as the telecom threat. Neither is distinguishable
+grammatically. What separates them is that the scam is always about money
+arriving, and that its cut-off is conditional on *your* inaction; both branches
+now require exactly that. Worth noting the benchmark would not have caught
+either: neither sentence appears in the corpus. They were found by writing
+legitimate mail designed to resemble the rule that had just been widened, and
+all seven such probes are now permanent rows in the held-out set (54 → 61).
+
+**Result: targeted scams missed 7.83% → 2.61%, Hinglish/Hindi 10.50% → 1.00%,
+Devanagari 19/170 → 0/170, with false positives *down* (1.06% → 0.98%) and the
+held-out set at 0/61 and 0/16.** 20 more regression tests (252 → 272), each
+pinning the vocabulary gap rather than the rate, and every widening paired with
+the legitimate message it must not fire on. Full suite green.
+
+**Read 0/170 carefully.** It means every Devanagari scam *in the curated set*
+is now caught, and those 170 rows are also the rows the gaps were found from —
+so it measures "no known miss remains", not "no miss exists". The honest read
+is that Devanagari has stopped being the worst gap, not that it is solved.
 
 ## 2026-08-17 (later)
 

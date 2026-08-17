@@ -1446,6 +1446,53 @@ for (const [name, message] of [
   );
 }
 
+/* ------------- the last six Devanagari misses, and their opposites ---------- */
+
+// normalize() folds digits onto letters but leaves their punctuation, so the
+// decimal point in an amount used to split a sentence in half and put the two
+// halves of a proximity-gated rule out of reach of each other.
+const decimalAmount = await analyzeLocal(
+  "किसान क्रेडिट लोन स्कीम में आपका 1.5 लाख अप्रूव हुआ है, GST क्लियरेंस के लिए 750 रुपये सरकारी खाते में भेजें।"
+);
+check(
+  "a decimal in the amount no longer breaks the same-sentence gate",
+  decimalAmount.reasons.some((r) => r.id === "advance_fee"),
+  `scored ${decimalAmount.score}, fired: ${decimalAmount.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+for (const [name, message, rule] of [
+  ["OLX collect request", "मैडम आपका सामान बेच दिया OLX पर, पेमेंट भेज रहा हूं आपको, बस स्क्रीन पर आया रिक्वेस्ट एक्सेप्ट कर दीजिए, 6000 रुपये है।", "upi_collect_request"],
+  ["refund lure without the word refund", "आपके ऑर्डर की पेमेंट डबल कट गई, 899 रुपये एक्स्ट्रा वापस पाने के लिए यहां क्लिक करके नेट बैंकिंग लॉगिन करें।", "prize_or_windfall"],
+  ["passbook upload", "स्वनिधि योजना के तहत 10000 रुपये का बिना ब्याज लोन मिल रहा है, आवेदन के लिए इस लिंक पर बैंक पासबुक फोटो अपलोड करें।", "payment_detail_change"],
+  ["IFSC harvest", "यह डायरेक्टर ऑफिस से है, बोनस के लिए हर कर्मचारी को अपना IFSC कोड और खाता नंबर इस फॉर्म में सत्यापित करना है।", "payment_detail_change"],
+  ["telecom cut-off", "Vi नेटवर्क अलर्ट: आपका सिम कार्ड री-वेरिफिकेशन के लिए फ्लैग हुआ है, कल शाम तक प्रोसेस पूरी न होने पर सेवाएं बंद होंगी।", "account_suspension"],
+]) {
+  const scam = await analyzeLocal(message);
+  check(
+    `a Devanagari scam fires ${rule} (${name})`,
+    scam.reasons.some((r) => r.id === rule),
+    `scored ${scam.score}, fired: ${scam.reasons.map((r) => r.id).join(", ") || "none"}`
+  );
+}
+
+// Both of these fired on the first version of the two branches above, and are
+// the reason each carries an extra condition. A meeting invite uses the exact
+// same imperative as the collect-request scam; a maintenance window states the
+// same outcome as the telecom threat. Money, and conditionality on the reader's
+// inaction, are what separate them.
+const meetingInvite = await analyzeLocal("कृपया कैलेंडर पर भेजी गई मीटिंग रिक्वेस्ट एक्सेप्ट कर दीजिए, कल दोपहर 3 बजे की है।");
+check(
+  "a meeting invite is not a UPI collect request",
+  meetingInvite.verdict === VERDICT.SAFE && !meetingInvite.reasons.some((r) => r.id === "upi_collect_request"),
+  `scored ${meetingInvite.score}, fired: ${meetingInvite.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+const maintenance = await analyzeLocal("रखरखाव कार्य के कारण कल रात 2 से 4 बजे तक ऑनलाइन सेवाएं बंद रहेंगी। असुविधा के लिए खेद है।");
+check(
+  "a scheduled maintenance window is not account suspension",
+  maintenance.verdict === VERDICT.SAFE && !maintenance.reasons.some((r) => r.id === "account_suspension"),
+  `scored ${maintenance.score}, fired: ${maintenance.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
 /* ---------------------------------- report --------------------------------- */
 
 const total = passed + failures.length;

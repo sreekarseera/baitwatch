@@ -239,11 +239,24 @@ const RULES = [
     weight: 2.6,
     why: "It asks you to approve a UPI request or scan a QR code to *receive* money. Approving a UPI request or scanning a QR code always sends money out of your account — it never brings money in.",
     test: (t) =>
-      new RegExp(`\\b(?:upi|gpay|google\\s*pay|phonepe|paytm|bhim|qr\\s*code)\\b|यूपीआई|क्यूआर|कलेक्ट\\s*रिक्वेस्ट`).test(t) &&
+      (new RegExp(`\\b(?:upi|gpay|google\\s*pay|phonepe|paytm|bhim|qr\\s*code)\\b|यूपीआई|क्यूआर|कलेक्ट\\s*रिक्वेस्ट`).test(t) &&
       new RegExp(
         `\\b(?:collect\\s*request|accept|approve|scan|enter\\s*(?:your\\s*)?pin|receive|refund|cashback)\\b` +
         `|${HI.enter}|स्वीकार|स्कैन|एक्सेप्ट`
-      ).test(t),
+      ).test(t)) ||
+      // The classic OLX/marketplace version names no UPI app at all — "I'm
+      // sending the payment, just accept the request on your screen" — so the
+      // brand-name gate above could never reach it. Requires the *imperative*
+      // accept ("एक्सेप्ट कर दीजिए"), which is what keeps a routine "आपकी
+      // रिक्वेस्ट स्वीकार कर ली गई है" ("your request has been accepted", a
+      // completed passive) from firing on the same two words.
+      (/(?:रिक्वेस्ट|request)[^।.!?]{0,40}(?:एक्सेप्ट|स्वीकार|accept)\s*कर\s*(?:दीजिए|दीजिये|दो|दें|ें|िए)/.test(t) &&
+        // Money has to be in the message, or this is a meeting invite. "मीटिंग
+        // रिक्वेस्ट एक्सेप्ट कर दीजिए" is the same imperative in the same
+        // words, and scored 35 on the first version of this branch. The tactic
+        // is always about a payment supposedly arriving, so requiring the money
+        // word is what separates the two rather than any grammatical cue.
+        new RegExp(`${HI.money}|पेमेंट|payment|भुगतान|अमाउंट`).test(t)),
   },
   {
     id: "account_suspension",
@@ -257,7 +270,17 @@ const RULES = [
       /\b(?:account|card|profile|subscription|service|net\s*banking)\b[^.!?]{0,40}\b(?:suspend(?:ed)?|lock(?:ed)?|block(?:ed)?|disabl(?:ed)?|deactivat(?:ed)?|restrict(?:ed)?|clos(?:ed|ure)|terminat(?:ed)?|on\s*hold)\b/.test(t) ||
       // "aapka khata band ho jayega", "KYC expire ho gaya hai"
       new RegExp(`(?:${HI.account}|${HI.kyc}|नेटबैंकिंग)[^.!?]{0,40}(?:${HI.blocked}|expire|khatam|खत्म)`).test(t) ||
-      new RegExp(`(?:${HI.kyc})[^.!?]{0,25}(?:expire|समाप्त|pending|update)`).test(t),
+      new RegExp(`(?:${HI.kyc})[^.!?]{0,25}(?:expire|समाप्त|pending|update)`).test(t) ||
+      // A telecom cut-off is account suspension wearing different nouns — the
+      // threat is "सेवाएं बंद होंगी" (services will stop), and the account word
+      // that HI.account looks for sits too far away to reach it.
+      // Conditional on *your* inaction, which is what makes it a threat rather
+      // than an announcement: "प्रोसेस पूरी न होने पर सेवाएं बंद होंगी". A
+      // maintenance notice ("रखरखाव के कारण सेवाएं बंद रहेंगी") states the same
+      // outcome with nothing for the reader to do, and fired on the first
+      // version of this branch.
+      /(?:सिम|सेवाएं|सेवाओं|सेवा|कनेक्शन)[^।.!?]{0,45}(?:बंद|ब्लॉक|निलंबित|समाप्त)/.test(t) &&
+        /न\s*होने|नहीं\s*तो|वरना|अन्यथा|पूरी\s*न|विफल|फेल|तुरंत|जल्दी/.test(t),
   },
   {
     id: "artificial_urgency",
@@ -321,7 +344,11 @@ const RULES = [
       // refund will arrive in 5 days" with nothing for the reader to do,
       // and that has to read as the routine notice it is. The scam version
       // always asks for a click, a claim, or a form.
-      new RegExp(`(?:रिफंड|रिवॉर्ड|बोनस|कैशबैक|पॉइंट्स)[^.!?]{0,45}(?:क्लेम|रिडीम|लिंक|apk|डाउनलोड|फॉर्म|वेरिफ|एक्सपायर|पिन)`).test(t),
+      // "वापस पाने" (to get it back) is how a refund lure is phrased when the
+      // word रिफंड never appears, and क्लिक/लॉगिन belong beside the other
+      // calls to action: a real refund notice tells you money is coming, it
+      // does not route you through a login page to collect it.
+      new RegExp(`(?:रिफंड|रिवॉर्ड|बोनस|कैशबैक|पॉइंट्स|वापस\\s*पान[ेा])[^.!?]{0,45}(?:क्लेम|रिडीम|लिंक|apk|डाउनलोड|फॉर्म|वेरिफ|एक्सपायर|पिन|क्लिक|लॉगिन|लॉग\\s*इन)`).test(t),
   },
   {
     id: "advance_fee",
@@ -435,7 +462,12 @@ const RULES = [
       // सैलरी/पेरोल belong beside बैंक here: a payroll-redirect scam asks you to
       // re-register your *salary* account, never your "bank account", so the
       // noun list as written could not match the payroll variant at all.
-      /(?:बैंक|सैलरी|पेरोल|payment)\s*(?:अकाउंट|एकाउंट|डिटेल|account|खाता)[^.!?]{0,20}(?:बदल|अपडेट|दोबारा|verify|वेरिफाई|भर|डाल|लिंक|जोड़|रजिस्टर)/.test(t),
+      /(?:बैंक|सैलरी|पेरोल|payment)\s*(?:अकाउंट|एकाउंट|डिटेल|account|खाता|पासबुक)[^.!?]{0,30}(?:बदल|अपडेट|दोबारा|verify|वेरिफाई|सत्यापित|भर|डाल|लिंक|जोड़|रजिस्टर|अपलोड)/.test(t) ||
+      // An IFSC code identifies a bank branch and has exactly one reason to be
+      // asked for: routing money. Paired with a verb it is the harvest, whether
+      // or not the message ever says "bank account" — a bonus-distribution
+      // pretext asks for "IFSC कोड और खाता नंबर" with no such phrase in it.
+      /(?:ifsc|आईएफएससी)[^।.!?]{0,45}(?:सत्यापित|वेरिफाई|भर|डाल|अपलोड|शेयर|फॉर्म|भेज)/.test(t),
   },
   {
     id: "family_emergency",
@@ -671,7 +703,21 @@ const EXONERATING_RULES = [
  * @returns {{score: number, signals: Array<{id, weight, detail}>, exonerating: Array}}
  */
 export function analyzeHeuristics(rawText, context = {}) {
-  const t = normalize(rawText);
+  // Drop the separators *inside* a number before normalizing. Almost every
+  // rule below gates on `[^.!?]{0,N}` to mean "within one sentence", and
+  // normalize() folds digits onto letters but leaves their punctuation alone —
+  // so "Rs 2,450.00" arrives as "rs 2,aso.oo" and "1.5 लाख" as "l.s लाख", each
+  // carrying a full stop that splits the sentence in half and puts the two
+  // halves of a rule out of reach of each other. A real advance-fee scam
+  // ("आपका 1.5 लाख अप्रूव हुआ है, GST क्लियरेंस के लिए 750 रुपये भेजें") went
+  // unflagged for exactly this reason: the decimal point in the amount, not
+  // anything about the sentence.
+  //
+  // Done here rather than in normalize(), which is shared with the tokenizer
+  // and must keep matching train_model.py's — see tests/test_parity.py. And
+  // done before folding, because afterwards "1.5" reads as "l.s" and is no
+  // longer distinguishable from an abbreviation.
+  const t = normalize(rawText.replace(/(?<=\d)[.,](?=\d)/g, ""));
   const signals = [];
   const exonerating = [];
 
