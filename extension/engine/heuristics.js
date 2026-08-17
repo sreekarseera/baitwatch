@@ -267,7 +267,29 @@ const RULES = [
       // their online-banking access — a real noun in its own right, not just
       // a modifier on "account" — and was missing from the noun list, so
       // "your net banking suspended" carried no signal at all.
-      /\b(?:account|card|profile|subscription|service|net\s*banking)\b[^.!?]{0,40}\b(?:suspend(?:ed)?|lock(?:ed)?|block(?:ed)?|disabl(?:ed)?|deactivat(?:ed)?|restrict(?:ed)?|clos(?:ed|ure)|terminat(?:ed)?|on\s*hold)\b/.test(t) ||
+      // "sim" is a noun in its own right here — a SIM-deactivation threat is the
+      // most common Indian version of this tactic.
+      //
+      // block(?:ed)?(?!...attempt) because a bank reporting that it "already
+      // blocked the attempt" is describing a defence, not a suspended account,
+      // and the rule read the blocked *attack* as a blocked *account*. Same
+      // shape of fix as वारंट(?!ी) and कस्टम(?!र).
+      //
+      // "interruption" was tried here and removed: "to avoid interruption" is
+      // what a real dunning email says when your card expires (Adobe's, in the
+      // held-out set, scored 64 on it) *and* what the Netflix-lookalike phish in
+      // test_engine.mjs says. The text does not separate them — the URL does,
+      // which is brand_claim_mismatch's job, not this rule's.
+      /\b(?:account|card|profile|subscription|service|net\s*banking|sim)\b[^.!?]{0,40}\b(?:suspend(?:ed)?|lock(?:ed)?|block(?:ed)?(?!\s*(?:the\s*)?(?:attempt|attack|transaction|charge|payment|it\b))|disabl(?:ed)?|deactivat(?:ed)?|restrict(?:ed)?|clos(?:ed|ure)|terminat(?:ed)?|on\s*hold)\b/.test(t) ||
+      // "We detected unusual activity in your account. Login to confirm." is
+      // the oldest pretext phish there is and tripped nothing at all. Both
+      // halves are required, and deliberately not sentence-gated: the pretext
+      // and the instruction are almost always separate sentences. The action
+      // half is what keeps a real bank's own alert quiet — those report the
+      // activity and tell you to call if it wasn't you, they do not send you to
+      // a login.
+      (/\b(?:unusual|suspicious|unauthori[sz]ed|unrecogni[sz]ed|abnormal)\s*(?:activity|log\s*in|login|sign[\s-]?in|access|transaction)\b/.test(t) &&
+        /\b(?:log\s*in|login|sign\s*in|verify|confirm|click|update\s*your|re-?activate)\b/.test(t)) ||
       // "aapka khata band ho jayega", "KYC expire ho gaya hai"
       new RegExp(`(?:${HI.account}|${HI.kyc}|नेटबैंकिंग)[^.!?]{0,40}(?:${HI.blocked}|expire|khatam|खत्म)`).test(t) ||
       new RegExp(`(?:${HI.kyc})[^.!?]{0,25}(?:expire|समाप्त|pending|update)`).test(t) ||
@@ -296,7 +318,13 @@ const RULES = [
       // this link expires soon" firing on the half that matters.
       const t2 = t
         .replace(
-          /\b(?:link|url|code|otp|password|token|session|invit(?:e|ation)|verification)\b[^.!?]{0,20}\bexpir\w*[^.!?]{0,25}/g,
+          // "password" deliberately not in this list, though it was at first.
+          // A *link*, code, token or session expiring is a security control the
+          // sender built; a *password* expiring is one of the oldest phishing
+          // pretexts there is ("Your iCloud password will expire today. Reset
+          // it now: <not-apple.example>"), and stripping it took that row's
+          // only urgency signal away.
+          /\b(?:link|url|code|otp|token|session|invit(?:e|ation)|verification)\b[^.!?]{0,20}\bexpir\w*[^.!?]{0,25}/g,
           " "
         )
         // The same clause in Devanagari — "वेरिफिकेशन कोड ... जल्दी एक्सपायर हो
@@ -312,7 +340,7 @@ const RULES = [
         // a report-this instruction always belongs to the defender.
         .replace(/\breport\s+(?:any\s+|all\s+)?(?:suspicious|fraudulent|fraud|phishing|unauthori[sz]ed|this|it)\b[^.!?]{0,40}/g, " ");
       return (
-        /\b(?:within\s*\d+\s*(?:hour|hr|minute|min|day)|in\s*the\s*next\s*\d+\s*(?:hour|minute)|before\s*(?:midnight|today|tonight|it\s*expires)|expir(?:es|ing)\s*(?:today|soon|in)|last\s*(?:chance|warning)|final\s*(?:notice|warning|reminder)|immediately|right\s*away|act\s*now|urgent(?:ly)?|asap)\b/.test(t2) ||
+        /\b(?:within\s*\d+\s*(?:hour|hr|minute|min|day)|in\s*the\s*next\s*\d+\s*(?:hour|minute)|before\s*(?:midnight|today|tonight|it\s*expires)|expir(?:es|ing|e)\s*(?:today|soon|in)|last\s*(?:chance|warning)|final\s*(?:notice|warning|reminder)|immediately|right\s*away|act\s*now|urgent(?:ly)?|asap)\b/.test(t2) ||
         new RegExp(`\\b(?:${HI.urgentLatin})\\b|${HI.urgentDevanagari}|आज\\s*रात|aaj\\s*raat`).test(t2)
       );
     },
@@ -324,7 +352,7 @@ const RULES = [
     test: (t) =>
       // police(?!\s*(?:verification|clearance)) for the same reason as HI.police
       // above — a passport's police verification step is not a threat.
-      /\b(?:arrest(?:ed)?|legal\s*action|lawsuit|court|police(?!\s*(?:verification|clearance))|fir\b|warrant|prosecut(?:e|ion)|penalt(?:y|ies)|fine|seiz(?:e|ed|ure)|deport|jail|criminal\s*(?:case|charge))\b/.test(t) ||
+      /\b(?:arrest(?:ed)?|legal\s*action|lawsuit|court|police(?!\s*(?:verification|clearance))|fir\b|warrant|prosecut(?:e|ion)|penalt(?:y|ies)|fine|challan|seiz(?:e|ed|ure)|deport|jail|criminal\s*(?:case|charge))\b/.test(t) ||
       new RegExp(`${HI.police}|मामला\\s*दर्ज|case\\s*darj|थाना|थाने|चालान|जमानत`).test(t),
   },
   {
@@ -335,7 +363,7 @@ const RULES = [
       // The subject isn't always literally "you" — "your email/number/name
       // was selected" is the same lure with the pronoun swapped out, and the
       // old pattern required "you" right before "selected/chosen" to match.
-      /\b(?:you(?:'ve| have)?\s*(?:been\s*)?(?:won|win|selected|chosen)|(?:was|has\s*been|have\s*been)\s*(?:selected|chosen)\s*to\s*receive|congratulations|lucky\s*winner|claim\s*your\s*(?:prize|reward|gift)|lottery|jackpot|unclaimed\s*(?:funds|money|refund)|inherit(?:ance|ed))\b/.test(t) ||
+      /\b(?:you(?:'ve| have)?\s*(?:been\s*)?(?:won|win|selected|chosen)|(?:was|has\s*been|have\s*been)\s*(?:selected|chosen)\s*to\s*receive|congratulations|lucky\s*(?:winner|draw)|claim\s*your\s*(?:prize|reward|gift)|lottery|jackpot|unclaimed\s*(?:funds|money|refund)|inherit(?:ance|ed))\b/.test(t) ||
       new RegExp(HI.prize).test(t) ||
       // Devanagari-spelled loanwords for the same "unexpected money is
       // waiting" lure — refunds, reward points, cashback, and bonuses that
@@ -456,7 +484,18 @@ const RULES = [
     weight: 2.5,
     why: "It asks to redirect a payment to different bank details. This is how invoice-redirection fraud works — always confirm by phone using a number you already have.",
     test: (t) =>
-      /\b(?:updated?|new|changed?|different)\s*(?:bank(?:ing)?|account|payment|remittance|wire)\s*(?:details|information|info|number)\b/.test(t) ||
+      // `(?:your\s*)?` because "Update your billing info" puts the possessive
+      // between the verb and the noun, and \s* only spans whitespace.
+      /\b(?:updated?|new|changed?|different)\s*(?:your\s*)?(?:bank(?:ing)?|account|payment|remittance|wire|billing)\s*(?:details|information|info|number)\b/.test(t) ||
+      // The English half of the payroll redirect already fixed in Devanagari.
+      // Not sentence-gated for the same reason as above — "our payroll portal
+      // changed. Re-register your salary account on the new site" splits the
+      // claim and the instruction across a full stop.
+      (/\b(?:payroll|salary)\s*(?:account|portal|details)\b/.test(t) &&
+        /\b(?:re-?register|re-?enter|update|chang(?:e|ed)|new\s*(?:site|portal|link))\b/.test(t)) ||
+      // "Bank details bhejiye" — the ask with no "updated/new" adjective in
+      // front of it, which is the only form the English pattern above matches.
+      new RegExp(`\\bbank\\s*details?\\b[^.!?]{0,30}(?:${HI.send}|send|share)`).test(t) ||
       /\bchange\s*(?:the\s*)?(?:bank|payment)\s*details\b/.test(t) ||
       // "वेंडर का बैंक अकाउंट बदल गया है", "बैंक डिटेल दोबारा वेरिफाई करें"
       // सैलरी/पेरोल belong beside बैंक here: a payroll-redirect scam asks you to
@@ -717,7 +756,17 @@ export function analyzeHeuristics(rawText, context = {}) {
   // and must keep matching train_model.py's — see tests/test_parity.py. And
   // done before folding, because afterwards "1.5" reads as "l.s" and is no
   // longer distinguishable from an abbreviation.
-  const t = normalize(rawText.replace(/(?<=\d)[.,](?=\d)/g, ""));
+  // Curly apostrophes fold to straight ones for the same reason. Gmail, Word
+  // and iOS all autocorrect ' to U+2019, so real mail overwhelmingly carries
+  // the curly form, and normalize() passes it through untouched — every
+  // pattern written with an ASCII apostrophe silently stopped matching the
+  // text it was written for. "You’ve won a free iPhone! Click the link to
+  // claim now." tripped no rule at all, because `you(?:'ve| have)?` cannot see
+  // the character actually in the string. The same held for don’t, can’t,
+  // couldn’t, it’s, I’m and friend’s across five other rules.
+  const t = normalize(
+    rawText.replace(/(?<=\d)[.,](?=\d)/g, "").replace(/[‘’ʼ´`]/g, "'")
+  );
   const signals = [];
   const exonerating = [];
 

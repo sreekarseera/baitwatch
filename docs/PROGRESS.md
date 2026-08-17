@@ -13,7 +13,7 @@ Last updated **2026-08-17**.
 | Archive | `github.com/sreekarseera/baitwatch-archive` (private, the original 32-commit history) |
 | Detection | 24 heuristics + URL analysis + brand impersonation + on-device classifier |
 | Model | 3,603 rows, 94.31% validation, 93.81% ±0.88% five-fold CV, 6,000 terms, 263.9 KB |
-| Tests | 272 engine checks, model parity (tokens + predictions), 5 accuracy gates, 3 held-out gates, 29 adapter checks, 20 browser checks |
+| Tests | 284 engine checks, model parity (tokens + predictions), 5 accuracy gates, 3 held-out gates, 29 adapter checks, 20 browser checks |
 
 Measured accuracy, from `node tests/test_benchmark.mjs`:
 
@@ -21,8 +21,8 @@ Measured accuracy, from `node tests/test_benchmark.mjs`:
 |---|---|
 | legitimate mail flagged | 0.98% |
 | …called *dangerous* | 0.22% |
-| targeted scams missed | 2.61% |
-| Hinglish/Hindi scams missed | 1.00% |
+| targeted scams missed | 0.00% |
+| Hinglish/Hindi scams missed | 0.00% |
 | …devanagari alone | 0/170 |
 | false alarms on ordinary Hinglish | 1/122 |
 
@@ -31,7 +31,7 @@ false positives — the benchmark above grades the model on rows it trained on:
 
 | | rate |
 |---|---|
-| held-out legitimate mail flagged | 0/61 |
+| held-out legitimate mail flagged | 0/66 |
 | held-out real websites flagged | 0/16 |
 
 Validation accuracy and false-positive rate have both moved more than once
@@ -41,6 +41,76 @@ validation accuracy went *down* on 2026-08-17 (second entry), from 94.94% to
 94.31%, and that was the point: the corpus it is measured against had no
 modern transactional mail in it at all, so the old number was partly scoring a
 blind spot. Read that entry before trying to win the 0.63 points back.
+
+## 2026-08-17 (the last curated misses)
+
+**Cleared the remaining nine targeted-scam misses, and two of them turned out
+to be general bugs rather than vocabulary gaps.** Both are the same class as
+the decimal-point bug found earlier the same day: something in real text that
+the patterns were never able to see.
+
+**Curly apostrophes.** Gmail, Word and iOS all autocorrect `'` to U+2019, so
+real mail overwhelmingly carries the curly form — and `normalize()` passes it
+through untouched. Every pattern written with an ASCII apostrophe had therefore
+stopped matching the text it was written for: `you(?:'ve| have)?` in
+`prize_or_windfall`, `don'?t` in `secrecy_request`, `i(?:'m| am)` in
+`boss_impersonation`, `friend'?s` and `it'?s` in `family_emergency`,
+`couldn'?t`/`can'?t` in `delivery_redispatch_fee`. "You’ve won a free iPhone!
+Click the link to claim now." tripped *nothing at all*. Folded to ASCII in
+`analyzeHeuristics` alongside the number fix, for the same reason it cannot go
+in `normalize()`.
+
+**`\d` is unreliable in this layer and one urgency pattern was quietly dead.**
+`normalize()` folds some digits onto letters and not others — "24" becomes
+"2a" — so `within\s*\d+\s*hour` can match "within 2 hours" and never "within
+24 hours". The file's own comment already says never to match `\d` in a
+heuristic; two patterns still did. Left as-is rather than widened: the obvious
+fix (`in\s*\S+\s*hours`) fires on "arriving in 2 days" and would cost more in
+false positives than it buys. Recorded here as a known limitation.
+
+**A regression from the same morning, caught by the curated set.** The
+link-expiry stripper added earlier that day listed `password` among the things
+whose expiry is a security control. It is not — "Your iCloud password will
+expire today. Reset it now: <lookalike domain>" is one of the oldest phishing
+pretexts there is, and stripping it removed that row's only urgency signal.
+`password` is out of the list; a *link*, code, token or session expiring is
+still stripped, and there is a test for both halves.
+
+**The other seven were rules with the tactic right and the nouns wrong:**
+`account_suspension` had no "sim" (the most common Indian version of the
+threat) and no "unusual activity" pretext at all; `payment_detail_change`
+required an adjective before "bank details" and could not see the possessive in
+"Update *your* billing info", nor the English half of the payroll redirect
+already fixed in Devanagari; `prize_or_windfall` knew "lucky winner" but not
+"lucky draw"; `threat_of_consequence` had no "challan", the Indian traffic fine.
+
+**Two widenings were reverted or narrowed after measuring, both on false
+positives the benchmark could not have caught.** Adding `interrupt(?:ed|ion)`
+to `account_suspension` scored Adobe's real dunning email at 64 — and "to avoid
+interruption" is also exactly what the Netflix-lookalike phish in
+`test_engine.mjs` says, so the *text* does not separate them at all. That is
+`brand_claim_mismatch`'s job, via the URL, and the addition was removed rather
+than kept with a caveat. Separately, a bank alert saying it had "already
+blocked the attempt" tripped `account_suspension`, because the rule read the
+blocked *attack* as a blocked *account*; fixed with the same negative-lookahead
+shape as `वारंट(?!ी)`.
+
+**Result: targeted scams missed 2.61% → 0.00%, Hinglish/Hindi 1.00% → 0.00%,
+false positives unchanged at 0.98%, held-out 0/66 and 0/16.** 12 more
+regression tests (272 → 284).
+
+**Both benchmark gates tightened, on the project's own stated reasoning that a
+gate far above reality is not a gate.** `targeted scams missed` 8% → 3% and
+`Hinglish/Hindi scams missed` 20% → 5% — the latter was set when the number was
+74%. Each is roughly ten rows of headroom, enough to add a batch of new tactics
+before their rules exist without tripping the gate.
+
+**0.00% is a statement about the curated set, not about scams.** Those 345 rows
+are also where every one of these gaps was found, so the honest reading is that
+the rule layer now covers every tactic anyone has written down for it — which
+is exactly as good as the list is complete. The corpus-wide false negative rate
+is still 25.55%, dominated by 2002 commercial spam the tool deliberately does
+not warn about. New tactics arrive by being reported, not by being derived.
 
 ## 2026-08-17 (Devanagari misses)
 

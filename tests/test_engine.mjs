@@ -1493,6 +1493,71 @@ check(
   `scored ${maintenance.score}, fired: ${maintenance.reasons.map((r) => r.id).join(", ") || "none"}`
 );
 
+/* --------------- the last English misses, and two general bugs ------------- */
+
+// Gmail, Word and iOS all autocorrect ' to U+2019, so real mail overwhelmingly
+// carries the curly form — and every pattern written with an ASCII apostrophe
+// silently stopped matching the text it was written for.
+const curlyApostrophe = await analyzeLocal("You’ve won a free iPhone! Click the link to claim now.");
+check(
+  "a curly apostrophe still matches the patterns written with a straight one",
+  curlyApostrophe.reasons.some((r) => r.id === "prize_or_windfall"),
+  `scored ${curlyApostrophe.score}, fired: ${curlyApostrophe.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+for (const [name, message, rule] of [
+  ["unusual activity pretext", "We detected unusual activity in your bank account. Login to confirm.", "account_suspension"],
+  ["SIM deactivation", "Your SIM will be deactivated in 24 hours due to pending verification. Call this number and complete e-KYC to keep your number.", "account_suspension"],
+  ["billing info update", "Update your billing info to avoid service interruption.", "payment_detail_change"],
+  ["English payroll redirect", "Team, our payroll portal changed. Re-register your salary account on the new site to receive this month's credit.", "payment_detail_change"],
+  ["bank details, no adjective", "Aapka mobile number lucky draw me select hua hai. Bank details bhejiye prize ke liye.", "payment_detail_change"],
+  ["lucky draw", "Aapka mobile number lucky draw me select hua hai. Bank details bhejiye prize ke liye.", "prize_or_windfall"],
+  ["traffic challan waiver", "Get your traffic challan waived off. Official settlement portal, pay half the amount here today only.", "threat_of_consequence"],
+  ["password expiry pretext", "Your iCloud password will expire today. Reset it now: track-package.info", "artificial_urgency"],
+]) {
+  const scam = await analyzeLocal(message);
+  check(
+    `an English/Hinglish scam fires ${rule} (${name})`,
+    scam.reasons.some((r) => r.id === rule),
+    `scored ${scam.score}, fired: ${scam.reasons.map((r) => r.id).join(", ") || "none"}`
+  );
+}
+
+// A *password* expiring is a phishing pretext; a *link* expiring is a security
+// control the sender built. Only the second is stripped.
+const resetLinkExpiry = await analyzeLocal(
+  "We received a request to reset your password. This link expires in 60 minutes. If you did not request it, ignore this email."
+);
+check(
+  "a reset link expiring is still not urgency, even though the mail says password",
+  resetLinkExpiry.verdict === VERDICT.SAFE,
+  `scored ${resetLinkExpiry.score}, fired: ${resetLinkExpiry.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+// "to avoid interruption" is what a real dunning email says when a card
+// expires, and what the Netflix-lookalike phish says. The text does not
+// separate them; the URL does.
+const realDunning = await analyzeLocal(
+  "Your Adobe Creative Cloud payment could not be processed. Please update your payment method in your account to avoid interruption."
+);
+check(
+  "a real dunning email is not account suspension",
+  realDunning.verdict === VERDICT.SAFE && !realDunning.reasons.some((r) => r.id === "account_suspension"),
+  `scored ${realDunning.score}, fired: ${realDunning.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+// The unusual-activity branch needs the action half, or every real bank's own
+// security alert fires on it.
+const realSecurityAlert = await analyzeLocal(
+  "We noticed unusual activity on your account and have already blocked the attempt. No action is required from you."
+);
+check(
+  "a bank's own unusual-activity alert with nothing to do is not flagged",
+  realSecurityAlert.verdict === VERDICT.SAFE &&
+    !realSecurityAlert.reasons.some((r) => r.id === "account_suspension"),
+  `scored ${realSecurityAlert.score}, fired: ${realSecurityAlert.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
 /* ---------------------------------- report --------------------------------- */
 
 const total = passed + failures.length;

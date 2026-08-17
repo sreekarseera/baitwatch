@@ -206,11 +206,18 @@ const GATES = [
   // missing tactics got rules. What remains is five messages that are each a
   // different one-off — a payroll-redirect, a pre-approved-loan fee, a traffic
   // fine "settlement" — rather than another cluster worth a rule.
-  ["targeted scams missed", curatedMissRate, 0.08],
+  // Tightened 8% -> 3% once the measurement reached 0.00%, on the same
+  // reasoning the false-positive gates were tightened on: a gate this far above
+  // reality leaves room to spend a lot of accuracy quietly and still pass. 3%
+  // is ~10 of the 345 curated rows, which is headroom to add a batch of new
+  // tactics before their rules exist without tripping it.
+  ["targeted scams missed", curatedMissRate, 0.03],
   // Was 74% before the rules learned any Hindi at all. Gated separately
   // because a blended number hides it: 35 Hinglish rows against 140 English
   // ones can go entirely wrong while the combined figure barely moves.
-  ["Hinglish/Hindi scams missed", indicMissRate, 0.20],
+  // 20% -> 5%, same reasoning. This one was set when the number was 74%; it is
+  // now 0.00%, and 5% is ~10 of the 200 Indic rows.
+  ["Hinglish/Hindi scams missed", indicMissRate, 0.05],
   ["false alarms on ordinary Hinglish", indicFalseAlarms / (indic.length - indicScams.length), 0.05],
 ];
 
