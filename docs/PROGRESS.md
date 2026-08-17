@@ -13,7 +13,7 @@ Last updated **2026-08-17**.
 | Archive | `github.com/sreekarseera/baitwatch-archive` (private, the original 32-commit history) |
 | Detection | 24 heuristics + URL analysis + brand impersonation + on-device classifier |
 | Model | 3,603 rows, 94.31% validation, 93.81% ±0.88% five-fold CV, 6,000 terms, 263.9 KB |
-| Tests | 252 engine checks, model parity (tokens + predictions), 5 accuracy gates, 3 held-out gates, 29 adapter checks, 20 browser checks |
+| Tests | 264 engine checks, model parity (tokens + predictions), 5 accuracy gates, 3 held-out gates, 29 adapter checks, 20 browser checks |
 
 Measured accuracy, from `node tests/test_benchmark.mjs`:
 
@@ -21,9 +21,9 @@ Measured accuracy, from `node tests/test_benchmark.mjs`:
 |---|---|
 | legitimate mail flagged | 0.98% |
 | …called *dangerous* | 0.22% |
-| targeted scams missed | 7.83% |
-| Hinglish/Hindi scams missed | 10.00% |
-| …devanagari alone | 18/170 |
+| targeted scams missed | 4.35% |
+| Hinglish/Hindi scams missed | 4.00% |
+| …devanagari alone | 6/170 |
 | false alarms on ordinary Hinglish | 1/122 |
 
 And from `node tests/test_holdout.mjs`, which is the number to trust for
@@ -41,6 +41,77 @@ validation accuracy went *down* on 2026-08-17 (second entry), from 94.94% to
 94.31%, and that was the point: the corpus it is measured against had no
 modern transactional mail in it at all, so the old number was partly scoring a
 blind spot. Read that entry before trying to win the 0.63 points back.
+
+## 2026-08-17 (Devanagari misses)
+
+**Evaluated open-source blocklists to replace hand-written rules, and did not
+ship one — none of the three candidates survived verification.** Worth
+recording so the next person does not re-run it. OpenPhish's terms forbid both
+commercial use and redistribution, which an MIT extension cannot work around.
+Phishing.Database is MIT and provides exactly the domain lists this project
+lacks, but its `pushed_at` is 2026-08-01 — the "Update Feeds" automation
+stalled 16 days ago — and phishing domains live hours to days, so the 391,618
+entries are mostly dead; it is also 11 MB against `chrome.storage.local`'s
+10 MB quota. PhishTank needs a per-user Cisco app key under a Cisco EULA.
+URLhaus, already integrated, is fresh (updated the same day) but is a
+*malware distribution* feed — its rows are `malware_download`, mostly IP-hosted
+droppers — not a phishing feed, so it does not cover this ground either.
+
+**Went after the Devanagari false negatives instead, which were the worst
+remaining gap at 19/170 when the day started.** Dumping the missed rows showed
+14 of 18 fired *no rule at all*, and the gaps clustered into one recurring
+shape this log has now hit three times: a Devanagari-spelled loanword that the
+Latin half of the same pattern already covered.
+
+- `HI.send` had no entry for "शेयर कर" — "OTP शेयर करें" is the single most
+  common way a Devanagari message asks for a one-time code, and it carried no
+  transmission signal at all. Gated on the verb rather than bare "शेयर", which
+  also means *share* as in stock market.
+- `job_advance_fee`'s named-cost list had "किट" and "जॉइनिंग" but not
+  "सिक्योरिटी" (security deposit), "एक्टिवेशन" or "अनलॉक", and could not match
+  "ID कार्ड" — routinely written mixed-script, Latin "ID" against Devanagari
+  "कार्ड", which neither `आईडी` nor `id\s*card` reaches.
+- `refund_callback` had a Devanagari half in all three clauses that covered one
+  spelling and missed its neighbour: "कट गया" but not "कटा है", "कॉल कर" but
+  not "कॉलबैक", and no word at all for *refund* or *cancel* — the two nouns the
+  tactic is named for.
+- `payment_detail_change` required "बैंक अकाउंट"; a payroll-redirect scam says
+  "सैलरी अकाउंट", never "bank account".
+- `unexpected_attachment_or_install` matched "डाउनलोड करें/कीजिए" but not
+  "डाउनलोड करके", and required apk and डाउनलोड to be adjacent when real
+  messages say "इस APK को डाउनलोड करके".
+- `secrecy_request` covered "किसी को मत" and "पुलिस को मत" but not "घर वालों
+  को मत" — the family-emergency scam's own version of it.
+
+**`no_action_requested` had quietly inverted again, and was the single biggest
+remaining contributor.** The rule tests for the *absence* of action verbs, and
+its own comment warns that absence-based rules have to know every language the
+presence-based ones do. Its Devanagari list matched "करें" but not "करना",
+"करवाइए" or "करके", and had no entry for भरें, अपलोड, लॉगिन or सत्यापित — so
+"फॉर्म तुरंत भरें" and "नेट बैंकिंग लॉगिन करें" read as asking for nothing and
+collected a −0.8 discount. Four of the ten misses remaining at that point were
+being helped over the line by it. This is the second time this specific rule
+has inverted; it is worth checking whenever a presence-based pattern gains
+vocabulary.
+
+**Two bugs found by measuring rather than assuming, both worth the detour.**
+Removing the discount cost one new false alarm on ordinary Hinglish, and it
+turned out to be the *same* expiry bug fixed for English earlier the same day —
+"वेरिफिकेशन कोड ... जल्दी एक्सपायर हो जाएगा" — because the clause-stripper was
+English-only. Its Devanagari counterpart also needed "।" (danda) in the
+exclusion class, or the strip runs past the end of a sentence. And the new
+credential-advice stripper turned out to swallow "घर वालों को मत बताना":
+`CREDENTIAL_ADVICE_RE` matches any negated transmission verb, which is right
+for "never share your OTP" and exactly wrong for a secrecy demand. It now only
+strips where a credential noun is actually nearby — which improved detection
+again on its own, since that clause had been suppressing `secrecy_request`.
+
+**Result: targeted scams missed 7.83% → 4.35%, Hinglish/Hindi 10.50% → 4.00%,
+Devanagari 19/170 → 6/170, with false positives *down* (1.06% → 0.98%) and the
+held-out set still 0/54 and 0/16.** 12 more regression tests (252 → 264), each
+pinning the vocabulary gap rather than the rate, and the expiry pair kept
+together so "a Devanagari verification code that expires is not urgency" sits
+beside "a Devanagari *account* expiring still counts". Full suite green.
 
 ## 2026-08-17 (later)
 

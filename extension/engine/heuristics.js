@@ -42,7 +42,13 @@ const HI = {
   // matched explicitly, proximity-gated to a money word, in the wantsMoney
   // checks below; adding it to this bare union would let it fire unguarded
   // through the money-optional third branch too.)
-  send: "bhej\\w*|भेज\\w*|de\\s*do|दे\\s*दो|jama\\w*|जमा|ट्रांसफ़?र\\w*",
+  // "शेयर कर" (share) is the single most common way a Devanagari message asks
+  // for an OTP — "OTP शेयर करें" — and none of the transmission verbs above
+  // covered it, so that phrasing carried no signal at all. Gated on the verb
+  // "कर" rather than bare "शेयर", which also means "share" as in stock market
+  // ("शेयर बाजार") and would fire on ordinary investment writing. The negated
+  // form is still handled: CREDENTIAL_ADVICE_RE already strips "शेयर न करें".
+  send: "bhej\\w*|भेज\\w*|de\\s*do|दे\\s*दो|jama\\w*|जमा|ट्रांसफ़?र\\w*|शेयर\\s*कर\\w*|साझा\\s*कर\\w*",
   tell: "bata(?:o|iye|ye|yein|na)|बता(?:ओ|इए|एं|ना)",
   enter: "daal(?:o|iye|ein|na)?|dal(?:o|iye|ein)|डाल(?:ो|िए|ें|ना)?",
   money: "pais[ae]|rupay[ae]?|rupees|rakam|राशि|पैस[ेा]|रुपय[ेा]|रकम",
@@ -270,6 +276,13 @@ const RULES = [
           /\b(?:link|url|code|otp|password|token|session|invit(?:e|ation)|verification)\b[^.!?]{0,20}\bexpir\w*[^.!?]{0,25}/g,
           " "
         )
+        // The same clause in Devanagari — "वेरिफिकेशन कोड ... जल्दी एक्सपायर हो
+        // जाएगा" — which the English pattern above cannot reach. Note the "।"
+        // (danda) in the exclusion class alongside ".!?": it is the Devanagari
+        // full stop, and leaving it out would let the strip run past the end of
+        // a sentence. An *account* expiring is deliberately still not stripped,
+        // matching the English half: only a code, link or session qualifies.
+        .replace(/(?:कोड|ओटीपी|लिंक|पासवर्ड|टोकन|सेशन|वेरिफिकेशन)[^।.!?]{0,40}एक्सपायर[^।.!?]{0,20}/g, " ")
         // "Report suspicious calls immediately" is the anti-fraud notice every
         // bank puts on its own login page, and it read as the pressure it warns
         // about. A scammer does not urge you to report them, so the urgency in
@@ -357,11 +370,22 @@ const RULES = [
       // you to keep a *transaction* secret. This rule is about isolation from a
       // second opinion — see the wording above — so when the thing not to be
       // shared is a credential, it is security advice and nothing else.
-      const withoutAdvice = t.replace(new RegExp(CREDENTIAL_ADVICE_RE, "g"), " ");
+      // Strip only the advice clauses that are actually about a credential.
+      // CREDENTIAL_ADVICE_RE is deliberately generic — it matches any negated
+      // transmission verb — and "घर वालों को मत बताना" ("don't tell the
+      // family") matches it exactly while being the secrecy *demand* this rule
+      // exists to catch, not advice against one. The credential noun nearby is
+      // what separates "never share your OTP" from "don't tell anyone".
+      const withoutAdvice = t.replace(new RegExp(CREDENTIAL_ADVICE_RE, "g"), (match, offset) => {
+        const around = t.slice(Math.max(0, offset - 40), offset + match.length + 40);
+        return CREDENTIAL_NOUN_RE.test(around) ? " " : match;
+      });
       return (
         /\b(?:do\s*not\s*(?:tell|inform|discuss|share\s*this)|keep\s*(?:this|it)\s*(?:confidential|secret|between\s*us)|don'?t\s*(?:tell|call|contact)\s*(?:anyone|police|bank)|without\s*informing)\b/.test(withoutAdvice) ||
         // "kisi ko mat bataiyega", "police ko mat bataana"
-        new RegExp(`(?:kisi\\s*ko|police\\s*ko|किसी\\s*को|पुलिस\\s*को)\\s*(?:mat|nahi|मत|नहीं)`).test(withoutAdvice)
+        // "घर वालों को मत बताना" (don't tell the family) is the family-emergency
+        // scam's own version of this, and only किसी/पुलिस were covered.
+        new RegExp(`(?:kisi\\s*ko|police\\s*ko|किसी\\s*को|पुलिस\\s*को|घर\\s*वालों\\s*को|ghar\\s*walon\\s*ko)\\s*(?:mat|nahi|मत|नहीं)`).test(withoutAdvice)
       );
     },
   },
@@ -384,7 +408,10 @@ const RULES = [
     why: "It wants you to install software or open an attachment to fix a problem. That software is how they take control of your device.",
     test: (t) =>
       /\b(?:anydesk|teamviewer|quick\s*support|remote\s*(?:access|desktop)|install\s*(?:this|the)\s*app|download\s*(?:the\s*)?(?:apk|attachment|file)|enable\s*(?:macros|installation\s*from\s*unknown))\b/.test(t) ||
-      /रिमोट\s*एक्सेस|एनीडेस्क|टीमव्यूअर|apk\s*डाउनलोड|डाउनलोड\s*(?:करें|कीजिए)/.test(t),
+      // "डाउनलोड करके" (having downloaded) is as common an imperative form as
+      // "करें"/"कीजिए" and was not covered, and `apk\s*डाउनलोड` required the
+      // two to be adjacent — real messages say "इस APK को डाउनलोड करके".
+      /रिमोट\s*एक्सेस|स्क्रीन\s*शेयर|एनीडेस्क|टीमव्यूअर|apk[^.!?]{0,15}डाउनलोड|डाउनलोड\s*कर\w*/.test(t),
   },
   {
     id: "boss_impersonation",
@@ -405,7 +432,10 @@ const RULES = [
       /\b(?:updated?|new|changed?|different)\s*(?:bank(?:ing)?|account|payment|remittance|wire)\s*(?:details|information|info|number)\b/.test(t) ||
       /\bchange\s*(?:the\s*)?(?:bank|payment)\s*details\b/.test(t) ||
       // "वेंडर का बैंक अकाउंट बदल गया है", "बैंक डिटेल दोबारा वेरिफाई करें"
-      /(?:बैंक|payment)\s*(?:अकाउंट|एकाउंट|डिटेल|account)[^.!?]{0,20}(?:बदल|अपडेट|दोबारा|verify|वेरिफाई|भर|डाल|लिंक|जोड़)/.test(t),
+      // सैलरी/पेरोल belong beside बैंक here: a payroll-redirect scam asks you to
+      // re-register your *salary* account, never your "bank account", so the
+      // noun list as written could not match the payroll variant at all.
+      /(?:बैंक|सैलरी|पेरोल|payment)\s*(?:अकाउंट|एकाउंट|डिटेल|account|खाता)[^.!?]{0,20}(?:बदल|अपडेट|दोबारा|verify|वेरिफाई|भर|डाल|लिंक|जोड़|रजिस्टर)/.test(t),
   },
   {
     id: "family_emergency",
@@ -514,8 +544,14 @@ const RULES = [
         // "registration ke liye 500 bhejiye", "रजिस्ट्रेशन के लिए 500 भेजें",
         // "जॉइनिंग किट के लिए 999 रुपये" (no explicit fee/send word, just a
         // named cost near a rupee amount — the amount stands in for one).
+        // The named-cost list was Devanagari-only for words that real messages
+        // write in Devanagari, and missed the ones they write as Devanagari-
+        // spelled loanwords: सिक्योरिटी (security deposit), एक्टिवेशन (account
+        // activation), अनलॉक (unlocking the first "task"). "ID कार्ड" is also
+        // routinely written mixed-script — Latin "ID" against Devanagari
+        // "कार्ड" — which neither `आईडी` nor `id\s*card` could match.
         new RegExp(
-          `(?:registration|रजिस्ट्रेशन|deposit|जॉइनिंग|किट|वेरिफिकेशन|यूनिफॉर्म|आईडी|id\\s*card|${HI.fee})[^.!?]{0,30}(?:${HI.send}|bhar|भर|${HI.money})`
+          `(?:registration|रजिस्ट्रेशन|deposit|जॉइनिंग|किट|वेरिफिकेशन|यूनिफॉर्म|आईडी|id\\s*(?:card|कार्ड)|सिक्योरिटी|एक्टिवेशन|अनलॉक|${HI.fee})[^.!?]{0,30}(?:${HI.send}|bhar|भर|${HI.money})`
         ).test(t)),
   },
   {
@@ -523,12 +559,16 @@ const RULES = [
     weight: 1.8,
     why: "It reports a charge you don't recognise and gives a number to call to cancel it. The number reaches the scammer, who will talk you into remote access or a transfer to \"refund\" you.",
     test: (t) =>
+      // Each of the three clauses had a Devanagari half that covered one
+      // spelling and missed the neighbouring one: "कट गया" but not "कटा",
+      // "कॉल कर" but not "कॉलबैक", and no word for refund or cancel at all —
+      // which are the two nouns this tactic is *about*.
       (/\b(?:auto[\s-]?renew(?:ed|al)?|subscription|invoice|order|debited|charged|transaction|purchase|renewal)\b/.test(t) ||
-        /\bdebit\s*hua|कट\s*गया|डेबिट\s*हुआ|खाते\s*से/.test(t)) &&
+        /\bdebit\s*hua|कट\s*(?:गया|गई)|कटा\s*है|कटे\s*हैं|डेबिट\s*हुआ|खाते\s*से|सब्सक्रिप्शन|ट्रांजैक्शन/.test(t)) &&
       (/\b(?:call|dial|contact|helpline|toll[\s-]?free|customer\s*(?:care|support)|reach\s*us)\b/.test(t) ||
-        /नंबर\s*पर\s*कॉल|number\s*par\s*call|कॉल\s*कर/.test(t)) &&
+        /नंबर\s*पर\s*कॉल|number\s*par\s*call|कॉल\s*(?:कर|बैक)|कॉलबैक|कस्टमर\s*केयर|एग्जीक्यूटिव/.test(t)) &&
       (/\b(?:cancel|refund|dispute|unauthori[sz]ed|not\s*(?:authori[sz]ed|you|recognise|recognize)|if\s*this\s*(?:was|is)\s*not|to\s*stop)\b/.test(t) ||
-        /agar\s*aapne\s*nahi|यदि\s*आपने\s*नहीं|अगर\s*आपने\s*नहीं|nahi\s*kiya/.test(t)),
+        /agar\s*aapne\s*nahi|यदि\s*आपने\s*नहीं|अगर\s*आपने\s*नहीं|nahi\s*kiya|रिफ़?ंड|कैंसिल|वापस\s*(?:पाने|पान)/.test(t)),
   },
   {
     id: "investment_scam",
@@ -600,10 +640,18 @@ const EXONERATING_RULES = [
     // catch. A Devanagari message demanding an OTP scored 21 instead of 44 for
     // this reason. Absence-based rules have to know every language the
     // presence-based ones do, or they quietly invert.
+    // The Devanagari verb list drifted behind the presence-based rules again,
+    // exactly as the note above predicts. `कर(?:िए|ें|ो)` matched "करें" but
+    // not "करना", "करवाइए" or "करके", and there was no entry for भरें (fill
+    // in), अपलोड (upload), लॉगिन (log in) or सत्यापित (verify) at all — so a
+    // scam saying "फॉर्म तुरंत भरें" or "नेट बैंकिंग लॉगिन करें" read as
+    // asking for nothing and collected the discount. Four of the ten remaining
+    // Devanagari misses were being helped over the line by this rule.
     test: (t) =>
       !new RegExp(
         "\\b(?:click|tap|verify|confirm|login|log\\s*in|sign\\s*in|pay|send|transfer|share|download|install|call|reply\\s*with|update\\s*your)\\b" +
-          `|${HI.send}|${HI.tell}|${HI.enter}|kar(?:iye|ein|o)\\b|कर(?:िए|ें|ो)|कॉल|क्लिक|अपडेट`
+          `|${HI.send}|${HI.tell}|${HI.enter}|kar(?:iye|ein|o)\\b|कर(?:िए|ें|ो|ना|वा|के)|कॉल|क्लिक|अपडेट` +
+          "|भर(?:ें|िए|ना|कर|ो)|अपलोड|लॉगिन|वेरिफ|सत्यापित|भुगतान|दीजिए|दीजिये"
       ).test(t),
   },
   {

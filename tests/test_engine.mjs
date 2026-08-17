@@ -1392,6 +1392,60 @@ check(
   `fired: ${unknownLoginPath.reasons.map((r) => r.id).join(", ") || "none"}`
 );
 
+/* ------------- Devanagari scams the rules used to read as nothing ----------- */
+// 14 of 18 remaining Devanagari misses fired no rule at all. Each of these
+// pins the specific vocabulary gap that let one through — the recurring shape
+// being a Devanagari-spelled loanword the Latin half of the pattern already
+// covered ("शेयर करें" for share, "सिक्योरिटी" for a security deposit).
+
+for (const [name, message, rule] of [
+  ["OTP शेयर करें", "सर आपका रिफंड बाकी है, हमारे एग्जीक्यूटिव को कॉलबैक करें और OTP शेयर करें।", "credential_request"],
+  ["ID कार्ड fee, mixed script", "नमस्ते, HR टीम से बोल रही हूं, आपका इंटरव्यू सिलेक्ट हो गया है ऑनलाइन सर्वे जॉब के लिए। ID कार्ड बनवाने के लिए 599 रुपये भेजिए।", "job_advance_fee"],
+  ["security deposit as सिक्योरिटी", "घर बैठे प्रोडक्ट लिस्टिंग का काम करें, 25000 प्रति माह। अकाउंट एक्टिवेशन के लिए 1100 रुपये सिक्योरिटी जमा करें।", "job_advance_fee"],
+  ["refund callback", "आपके सब्सक्रिप्शन का 2199 रुपये कटा है, कैंसिल कराने के लिए कस्टमर केयर को कॉल करें।", "refund_callback"],
+  ["payroll redirect", "टीम, हमारा पेरोल पोर्टल बदल गया है, कृपया इस नए लिंक पर अपना सैलरी अकाउंट दोबारा रजिस्टर करें।", "payment_detail_change"],
+  ["APK को डाउनलोड करके", "आयुष्मान भारत कार्ड फ्री बनवाएं, 5 लाख तक का इलाज मुफ्त। रजिस्ट्रेशन के लिए इस APK को डाउनलोड करके अपनी डिटेल भरें।", "unexpected_attachment_or_install"],
+  ["घर वालों को मत बताना", "चाचा जी, मैं रोहन बोल रहा हूं, नया सिम लिया है। घर वालों को मत बताना, 25000 रुपये भेज दो।", "secrecy_request"],
+]) {
+  const scam = await analyzeLocal(message);
+  check(
+    `a Devanagari scam fires ${rule} (${name})`,
+    scam.reasons.some((r) => r.id === rule),
+    `scored ${scam.score}, fired: ${scam.reasons.map((r) => r.id).join(", ") || "none"}`
+  );
+}
+
+// The English fix for "this link expires in 24 hours" had no Devanagari half,
+// so a food-delivery app's own verification code was flagged for urgency.
+const devaCodeExpiry = await analyzeLocal("फूड डिलीवरी ऐप के लिए वेरिफिकेशन कोड 3391 है, जल्दी एक्सपायर हो जाएगा।");
+check(
+  "a Devanagari verification code that expires is not manufactured urgency",
+  devaCodeExpiry.verdict === VERDICT.SAFE &&
+    !devaCodeExpiry.reasons.some((r) => r.id === "artificial_urgency"),
+  `scored ${devaCodeExpiry.score}, fired: ${devaCodeExpiry.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+const devaAccountExpiry = await analyzeLocal("आपका अकाउंट जल्दी एक्सपायर हो जाएगा, तुरंत KYC अपडेट करें।");
+check(
+  "a Devanagari *account* expiring still counts as urgency",
+  devaAccountExpiry.reasons.some((r) => r.id === "artificial_urgency"),
+  `fired: ${devaAccountExpiry.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+// no_action_requested is absence-based, so its verb list has to keep up with
+// the presence-based rules or it quietly discounts the scams they catch.
+for (const [name, message] of [
+  ["फॉर्म भरें", "बैंक ऑफ बड़ौदा से: आपके खाते में KYC मिसमैच है, निवेश फ्रीज होने से बचने के लिए फॉर्म तुरंत भरें।"],
+  ["लॉगिन करें", "आपके ऑर्डर की पेमेंट डबल कट गई, 899 रुपये वापस पाने के लिए यहां क्लिक करके नेट बैंकिंग लॉगिन करें।"],
+  ["सत्यापित करना है", "यह डायरेक्टर ऑफिस से है, हर कर्मचारी को अपना IFSC कोड और खाता नंबर इस फॉर्म में सत्यापित करना है।"],
+]) {
+  const asked = await analyzeLocal(message);
+  check(
+    `a Devanagari message that asks for something is not exonerated (${name})`,
+    !asked.exonerating.some((r) => r.id === "no_action_requested"),
+    `exonerating: ${asked.exonerating.map((r) => r.id).join(", ") || "none"}`
+  );
+}
+
 /* ---------------------------------- report --------------------------------- */
 
 const total = passed + failures.length;
