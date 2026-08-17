@@ -8,7 +8,7 @@
 // signal the user needed to see.
 
 import { analyzeHeuristics } from "./heuristics.js";
-import { analyzeUrls } from "./urls.js";
+import { analyzeUrls, PROTECTED_BRANDS, registrableDomain, hostOf } from "./urls.js";
 import { analyzeImpersonation } from "./impersonation.js";
 import { classify } from "./model.js";
 import { matchUrlhaus } from "./urlhaus.js";
@@ -66,8 +66,19 @@ function squash(rawScore) {
  * @returns {Promise<object>} verdict object
  */
 export async function analyzeLocal(text, opts = {}) {
+  // A page served from a brand's own registrable domain is that brand. Saying
+  // "Income Tax Department, Government of India" is a claim of identity on a
+  // message and a statement of fact on incometax.gov.in, and impersonated_
+  // authority could not tell the two apart because the rule layer never saw
+  // where the text came from. Empty for messages, where there is no domain to
+  // vouch for anything and the rule should keep its full force.
+  const pageDomain = opts.page?.url ? registrableDomain(hostOf(opts.page.url) || "") : "";
+  const onOfficialDomain =
+    Boolean(pageDomain) && PROTECTED_BRANDS.some((brand) => brand.domains.includes(pageDomain));
+
   const heuristics = analyzeHeuristics(text, {
     hasCredentialForm: (opts.page?.credentialFields || []).length > 0,
+    onOfficialDomain,
   });
   const urls = analyzeUrls(text, opts.extraUrls || []);
 

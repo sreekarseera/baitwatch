@@ -78,8 +78,14 @@ const HI = {
   // word but also happens to be the first five characters of the routine
   // e-commerce word for "warranty", and a bare substring match can't tell
   // them apart. Same class of bug as कस्टम(?!र) above, on a different word.
+  // "पुलिस सत्यापन" / "police verification" is a routine step in getting a
+  // passport, a rental agreement or a job — the single most common way the
+  // word "police" appears in legitimate Indian mail, and it made a passport
+  // approval notice fire both threat_of_consequence and impersonated_authority.
+  // Excluded by what follows the word rather than by dropping the word, the
+  // same shape as वारंट(?!ी) and कस्टम(?!र) below.
   police:
-    "cyber\\s*cell|साइबर\\s*सेल|cbi|सीबीआई|police|पुलिस|warrant|वारंट(?!ी)|giraftar|गिरफ़?्तार|थाना|थाने|" +
+    "cyber\\s*cell|साइबर\\s*सेल|cbi|सीबीआई|police(?!\\s*(?:verification|clearance))|पुलिस(?!\\s*(?:सत्यापन|वेरिफिकेशन|क्लीयरेंस))|warrant|वारंट(?!ी)|giraftar|गिरफ़?्तार|थाना|थाने|" +
     "\\bed\\b|ईडी|फेमा|supreme\\s*court|सुप्रीम\\s*कोर्ट|money\\s*laundering|मनी\\s*लॉन्ड्रिंग|दूरसंचार",
   prize: "lotter[iy]|लॉटरी|jeet\\s*ga(?:ye|ya)|जीत\\s*ग(?:ए|या)|badhai|बधाई|inaam|इनाम",
   kyc: "kyc|केवाईसी",
@@ -111,8 +117,35 @@ const CREDENTIAL_TRANSMIT_RE = new RegExp(
 
 // Verbs that describe typing a secret into a form. Damning in a message,
 // unremarkable on the login page it describes — see the rule below.
+//
+// The determiner is required, not decoration. Bare verbs matched anywhere in
+// the message, so "Your Aadhaar update request has been processed" — a
+// completion notice with nothing to do — read as a credential request off the
+// noun "update" sitting next to "Aadhaar". A real instruction points the verb
+// at something of yours ("enter your password", "update your details"); a noun
+// phrase like "update request" does not.
 const CREDENTIAL_ENTRY_RE = new RegExp(
-  `\\b(?:enter|provide|confirm|verify|submit|update)\\b|${HI.enter}`
+  `\\b(?:enter|provide|confirm|verify|submit|update)\\s+(?:your|the|this|it|below|these)\\b|${HI.enter}`
+);
+
+// The advice *against* handing a secret over, which is how every real OTP
+// message ends. "Never share your OTP", "किसी को न बताएं", "kisi ko na bataye"
+// all put a transmission verb next to a credential noun — the exact shape
+// CREDENTIAL_TRANSMIT_RE looks for — so the single most reliable marker that a
+// message is a genuine bank notification was being read as the theft it warns
+// against. Measured: all five held-out bank OTP messages flagged, three of them
+// "dangerous", entirely on this.
+//
+// Only the negation separates the two, so only the negation is tested here.
+// "Please share your OTP to verify your account" is untouched and still fires.
+// Latin and Devanagari alternatives are kept apart because JS's \b is an ASCII
+// word boundary and can never match against a Devanagari character — see the
+// note on HI.urgentLatin above.
+const CREDENTIAL_ADVICE_RE = new RegExp(
+  "\\b(?:never|not|no\\s*one|nobody|avoid)\\b[^.!?]{0,25}" +
+    "\\b(?:shar(?:e|ing)|disclos(?:e|ing)|reveal(?:ing)?|tell|give|send|forward|provide)\\b" +
+    "|\\b(?:na|nahi|mat|kabhi)\\s+(?:bata\\w*|bhej\\w*|share\\s*kar\\w*)" +
+    "|(?:न|नहीं|मत)\\s*(?:बता|भेज|शेयर|साझा|दे)"
 );
 
 // Same-sentence gate, not "anywhere in the message" — a real crypto
@@ -132,6 +165,27 @@ const CRYPTO_TRANSFER_RE = new RegExp(
   `\\b${CRYPTO_RE}\\b[^.!?]{0,40}\\b${CRYPTO_VERB_RE}\\b|\\b${CRYPTO_VERB_RE}\\b[^.!?]{0,40}\\b${CRYPTO_RE}\\b`
 );
 
+// A gift card named anywhere used to be the whole rule, at the heaviest weight
+// any rule carries (3.0) — enough to convict on its own. But the tactic this
+// rule names is being asked to *pay* in gift cards, and an ordinary retail
+// newsletter offering one as a prize ("answer correctly for a chance to win a
+// gift card") satisfied the noun without any ask at all. Same same-sentence
+// gating pattern crypto_transfer and prize_or_windfall already use, for the
+// same reason.
+//
+// The "you've won a $500 gift card, click to claim" scams in curated.csv are
+// unaffected in verdict: they are what prize_or_windfall and artificial_urgency
+// are for, and they still land well above the dangerous threshold without this
+// rule needing to fire on the noun alone.
+const GIFT_CARD_RE =
+  /\b(?:gift\s*card|itunes\s*card|steam\s*(?:card|wallet)|google\s*play\s*card|voucher\s*code|prepaid\s*card)\b|गिफ्ट\s*कार्ड|आइट्यून्स|स्टीम\s*कार्ड|वाउचर/;
+const GIFT_CARD_ASK_RE =
+  /\b(?:buy|purchase|get|pick\s*up|load|top\s*up|pay|paying|payment|send|forward|share|scratch|redeem)\b|खरीद|भेज|पेमेंट|पैसे/;
+const GIFT_CARD_PAYMENT_RE = new RegExp(
+  `${GIFT_CARD_ASK_RE.source}[^.!?]{0,60}(?:${GIFT_CARD_RE.source})` +
+    `|(?:${GIFT_CARD_RE.source})[^.!?]{0,60}${GIFT_CARD_ASK_RE.source}`
+);
+
 /**
  * Each rule is {id, weight, why, test}. `why` is written to be shown to a
  * non-technical user verbatim, so it explains the *risk*, not the regex.
@@ -147,25 +201,26 @@ const RULES = [
     why: "It asks for a password, PIN, OTP, or card number. No real bank, retailer, or IT team ever asks for these.",
     test: (t, ctx) => {
       if (!CREDENTIAL_NOUN_RE.test(t)) return false;
+      // Cut the "never share this with anyone" advice out before looking for a
+      // request, rather than skipping the message wholesale when advice is
+      // present. A scammer who pastes a real bank footer under their own ask
+      // still gets caught on the ask; the footer alone convicts nobody.
+      const asked = t.replace(new RegExp(CREDENTIAL_ADVICE_RE, "g"), " ");
       // On a page that has a real login form, "enter your password" is what
       // every legitimate sign-in page in the world says. Judged as a message
       // it reads as a credential request, which made the rule fire on the
       // genuine bank and workplace logins the whole-page scan exists to check.
       // There, only asking you to *transmit* the secret counts.
       return ctx.hasCredentialForm
-        ? CREDENTIAL_TRANSMIT_RE.test(t)
-        : CREDENTIAL_TRANSMIT_RE.test(t) || CREDENTIAL_ENTRY_RE.test(t);
+        ? CREDENTIAL_TRANSMIT_RE.test(asked)
+        : CREDENTIAL_TRANSMIT_RE.test(asked) || CREDENTIAL_ENTRY_RE.test(asked);
     },
   },
   {
     id: "gift_card_payment",
     weight: 3.0,
     why: "It asks for payment in gift cards. Gift cards are untraceable and are the single most common scam payment method — no legitimate business, agency, or manager collects payment this way.",
-    test: (t) =>
-      /\b(?:gift\s*card|itunes\s*card|steam\s*(?:card|wallet)|google\s*play\s*card|voucher\s*code|prepaid\s*card)\b/.test(t) ||
-      // "Google Play गिफ्ट कार्ड" — the brand stays in Latin script but the
-      // "gift card" itself is routinely spelled out in Devanagari.
-      /गिफ्ट\s*कार्ड|आइट्यून्स|स्टीम\s*कार्ड|वाउचर/.test(t),
+    test: (t) => GIFT_CARD_RE.test(t) && GIFT_CARD_PAYMENT_RE.test(t),
   },
   {
     id: "crypto_transfer",
@@ -202,16 +257,38 @@ const RULES = [
     id: "artificial_urgency",
     weight: 1.2,
     why: "It sets a countdown. Deadlines like this exist to stop you checking with someone before you act.",
-    test: (t) =>
-      /\b(?:within\s*\d+\s*(?:hour|hr|minute|min|day)|in\s*the\s*next\s*\d+\s*(?:hour|minute)|before\s*(?:midnight|today|tonight|it\s*expires)|expir(?:es|ing)\s*(?:today|soon|in)|last\s*(?:chance|warning)|final\s*(?:notice|warning|reminder)|immediately|right\s*away|act\s*now|urgent(?:ly)?|asap)\b/.test(t) ||
-      new RegExp(`\\b(?:${HI.urgentLatin})\\b|${HI.urgentDevanagari}|आज\\s*रात|aaj\\s*raat`).test(t),
+    test: (t) => {
+      // A short-lived link, code or session is a security control, not a
+      // countdown — every password-reset and email-verification message ever
+      // sent says one expires, and saying so protects the reader rather than
+      // rushing them. The pressure this rule is named for is an *account* or an
+      // *offer* expiring, which is the scam's manufactured stake. Dropping the
+      // clause rather than the message keeps "your account expires in 24 hours,
+      // this link expires soon" firing on the half that matters.
+      const t2 = t
+        .replace(
+          /\b(?:link|url|code|otp|password|token|session|invit(?:e|ation)|verification)\b[^.!?]{0,20}\bexpir\w*[^.!?]{0,25}/g,
+          " "
+        )
+        // "Report suspicious calls immediately" is the anti-fraud notice every
+        // bank puts on its own login page, and it read as the pressure it warns
+        // about. A scammer does not urge you to report them, so the urgency in
+        // a report-this instruction always belongs to the defender.
+        .replace(/\breport\s+(?:any\s+|all\s+)?(?:suspicious|fraudulent|fraud|phishing|unauthori[sz]ed|this|it)\b[^.!?]{0,40}/g, " ");
+      return (
+        /\b(?:within\s*\d+\s*(?:hour|hr|minute|min|day)|in\s*the\s*next\s*\d+\s*(?:hour|minute)|before\s*(?:midnight|today|tonight|it\s*expires)|expir(?:es|ing)\s*(?:today|soon|in)|last\s*(?:chance|warning)|final\s*(?:notice|warning|reminder)|immediately|right\s*away|act\s*now|urgent(?:ly)?|asap)\b/.test(t2) ||
+        new RegExp(`\\b(?:${HI.urgentLatin})\\b|${HI.urgentDevanagari}|आज\\s*रात|aaj\\s*raat`).test(t2)
+      );
+    },
   },
   {
     id: "threat_of_consequence",
     weight: 1.7,
     why: "It threatens arrest, legal action, or a fine. Real agencies send written notices; they do not threaten you over email or chat.",
     test: (t) =>
-      /\b(?:arrest(?:ed)?|legal\s*action|lawsuit|court|police|fir\b|warrant|prosecut(?:e|ion)|penalt(?:y|ies)|fine|seiz(?:e|ed|ure)|deport|jail|criminal\s*(?:case|charge))\b/.test(t) ||
+      // police(?!\s*(?:verification|clearance)) for the same reason as HI.police
+      // above — a passport's police verification step is not a threat.
+      /\b(?:arrest(?:ed)?|legal\s*action|lawsuit|court|police(?!\s*(?:verification|clearance))|fir\b|warrant|prosecut(?:e|ion)|penalt(?:y|ies)|fine|seiz(?:e|ed|ure)|deport|jail|criminal\s*(?:case|charge))\b/.test(t) ||
       new RegExp(`${HI.police}|मामला\\s*दर्ज|case\\s*darj|थाना|थाने|चालान|जमानत`).test(t),
   },
   {
@@ -240,7 +317,20 @@ const RULES = [
     test: (t) =>
       /\b(?:processing\s*fee|clearance\s*fee|customs\s*(?:fee|duty|charge)|release\s*fee|registration\s*fee|handling\s*charge|small\s*(?:fee|amount)|refundable\s*deposit)\b/.test(t) ||
       // "processing fee bhejiye", "clearance shulk bharkar", "file charge 999"
-      new RegExp(`(?:${HI.fee})[^.!?]{0,25}(?:${HI.send}|bhar|भर|pay)|(?:file|delivery|clearance|क्लियरेंस|processing)\\s*(?:${HI.fee})`).test(t) ||
+      //
+      // The named-cost half needs the same "and they want it sent" requirement
+      // its sibling has. Bare "delivery fee" convicted at weight 2.0 on its
+      // own, and "Delivery fee Rs 30" is a line item on every checkout page and
+      // order confirmation that exists — the real Swiggy cart page was called
+      // dangerous on nothing else. An advance fee is only a scam when someone
+      // is asking you to send it.
+      new RegExp(
+        `(?:${HI.fee})[^.!?]{0,25}(?:${HI.send}|bhar|भर|pay)` +
+          // Either order, like CRYPTO_TRANSFER_RE: "pay the file processing
+          // charge" puts the verb first, "delivery fee bhejiye" puts it last.
+          `|(?:file|delivery|clearance|क्लियरेंस|processing)\\s*(?:${HI.fee})[^.!?]{0,30}(?:${HI.send}|bhar|भर|pay\\b)` +
+          `|(?:${HI.send}|bhar|भर|pay\\b)[^.!?]{0,30}(?:file|delivery|clearance|क्लियरेंस|processing)\\s*(?:${HI.fee})`
+      ).test(t) ||
       // Loan-advance-fee scams name the up-front cost without a fee word at
       // all — "GST क्लियरेंस के लिए 750 रुपये", "स्टाम्प ड्यूटी" — the
       // charge is identified by what it's for, next to a rupee amount.
@@ -250,18 +340,30 @@ const RULES = [
     id: "impersonated_authority",
     weight: 1.4,
     why: "It claims to be from a bank, tax office, or support desk. Check by contacting them yourself using a number you already have — never one from the message.",
-    test: (t) =>
-      /\b(?:income\s*tax|irs\b|hmrc|customs|cyber\s*cell|trai\b|rbi\b|federal|government|microsoft\s*support|apple\s*support|tech\s*support|security\s*team|fraud\s*department)\b/.test(t) ||
-      new RegExp(`${HI.police}|bank\\s*se\\s*bol|बैंक\\s*से\\s*बोल|hr\\s*se\\s*bol|कस्टम(?!र)|इनकम\\s*टैक्स|आयकर`).test(t),
+    test: (t, ctx) =>
+      // On the authority's own domain the claim is true, so there is nothing to
+      // impersonate — see onOfficialDomain in engine.js.
+      !ctx.onOfficialDomain &&
+      (/\b(?:income\s*tax|irs\b|hmrc|customs|cyber\s*cell|trai\b|rbi\b|federal|government|microsoft\s*support|apple\s*support|tech\s*support|security\s*team|fraud\s*department)\b/.test(t) ||
+        new RegExp(`${HI.police}|bank\\s*se\\s*bol|बैंक\\s*से\\s*बोल|hr\\s*se\\s*bol|कस्टम(?!र)|इनकम\\s*टैक्स|आयकर`).test(t)),
   },
   {
     id: "secrecy_request",
     weight: 2.1,
     why: "It tells you to keep this quiet or not to contact anyone. Isolating you from a second opinion is a deliberate tactic, not a business practice.",
-    test: (t) =>
-      /\b(?:do\s*not\s*(?:tell|inform|discuss|share\s*this)|keep\s*(?:this|it)\s*(?:confidential|secret|between\s*us)|don'?t\s*(?:tell|call|contact)\s*(?:anyone|police|bank)|without\s*informing)\b/.test(t) ||
-      // "kisi ko mat bataiyega", "police ko mat bataana"
-      new RegExp(`(?:kisi\\s*ko|police\\s*ko|किसी\\s*को|पुलिस\\s*को)\\s*(?:mat|nahi|मत|नहीं)`).test(t),
+    test: (t) => {
+      // "Do not share this OTP with anyone" is the opposite of this rule: it is
+      // the bank telling you to keep a *secret* secret, not a scammer telling
+      // you to keep a *transaction* secret. This rule is about isolation from a
+      // second opinion — see the wording above — so when the thing not to be
+      // shared is a credential, it is security advice and nothing else.
+      const withoutAdvice = t.replace(new RegExp(CREDENTIAL_ADVICE_RE, "g"), " ");
+      return (
+        /\b(?:do\s*not\s*(?:tell|inform|discuss|share\s*this)|keep\s*(?:this|it)\s*(?:confidential|secret|between\s*us)|don'?t\s*(?:tell|call|contact)\s*(?:anyone|police|bank)|without\s*informing)\b/.test(withoutAdvice) ||
+        // "kisi ko mat bataiyega", "police ko mat bataana"
+        new RegExp(`(?:kisi\\s*ko|police\\s*ko|किसी\\s*को|पुलिस\\s*को)\\s*(?:mat|nahi|मत|नहीं)`).test(withoutAdvice)
+      );
+    },
   },
   {
     id: "sextortion_threat",

@@ -1234,6 +1234,164 @@ check(
   !urlhausNoFeed.reasons.some((r) => r.id === "urlhaus_match")
 );
 
+/* ------------- legitimate mail and real sites must stay unflagged ----------- */
+// Each of these was a measured false positive on held-out data — see
+// tests/test_holdout.mjs, which grades the whole genre. These pin the specific
+// rule that was wrong, so a regression names itself instead of moving a rate.
+
+// A bank's own OTP message ends with the warning *not* to share the code, which
+// put a transmission verb next to a credential noun and read as the theft it
+// warns against. All five held-out bank OTP messages were flagged this way,
+// three of them "dangerous".
+for (const [name, message] of [
+  ["English", "558104 is your one time password to login to your ICICI Bank account. This OTP is valid for 5 minutes. Never share your OTP with anyone."],
+  ["with the do-not-share footer", "Your OTP for the transaction of Rs 2,450.00 at BIGBAZAAR is 774512. Do not share this OTP with anyone including bank staff."],
+  ["Hinglish", "Aapke HDFC account ke liye OTP 210945 hai. Kisi ko na bataye, bank kabhi OTP nahi maangta."],
+  ["Devanagari", "ग्रोसरी स्टोर पर कार्ड ट्रांजैक्शन के लिए OTP 55219 है, बैंक स्टाफ सहित किसी को न बताएं।"],
+]) {
+  const otp = await analyzeLocal(message);
+  check(
+    `a bank delivering an OTP is not flagged (${name})`,
+    otp.verdict === VERDICT.SAFE,
+    `scored ${otp.score}, fired: ${otp.reasons.map((r) => r.id).join(", ") || "none"}`
+  );
+}
+
+// The other direction of the same rule: stripping the advice clause must not
+// strip the ask that follows it.
+const bankFooterOverAsk = await analyzeLocal(
+  "Never share your OTP with anyone. Now please send me the OTP you just received so I can verify your account."
+);
+check(
+  "a real bank footer pasted above an actual ask does not launder the ask",
+  bankFooterOverAsk.reasons.some((r) => r.id === "credential_request"),
+  `fired: ${bankFooterOverAsk.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+// A prize is not a payment method. gift_card_payment carries the heaviest
+// weight any rule has, and it fired on the noun alone.
+const giftCardPrize = await analyzeLocal(
+  "This Week's Movie Trivia Question from All Things New England. Hello Friends! Answer correctly for a chance to win a gift card."
+);
+check(
+  "a newsletter offering a gift card as a prize is not a gift-card payment demand",
+  !giftCardPrize.reasons.some((r) => r.id === "gift_card_payment"),
+  `scored ${giftCardPrize.score}, fired: ${giftCardPrize.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+// A short-lived link is a security control, not a countdown.
+const verificationLink = await analyzeLocal(
+  "Verify your email address. Please confirm this email address to finish setting up your Bitwarden account. This link expires in 24 hours."
+);
+check(
+  "a verification email whose link expires is not flagged for urgency",
+  verificationLink.verdict === VERDICT.SAFE &&
+    !verificationLink.reasons.some((r) => r.id === "artificial_urgency"),
+  `scored ${verificationLink.score}, fired: ${verificationLink.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+const accountExpiry = await analyzeLocal(
+  "Your account expires in 24 hours unless you confirm your details now."
+);
+check(
+  "an *account* expiring still counts as manufactured urgency",
+  accountExpiry.reasons.some((r) => r.id === "artificial_urgency"),
+  `fired: ${accountExpiry.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+// Police verification is a step in getting a passport, not a threat.
+const passport = await analyzeLocal("आपका पासपोर्ट आवेदन स्वीकृत हो गया है। पुलिस सत्यापन के बाद पासपोर्ट भेजा जाएगा।");
+check(
+  "a passport approval mentioning police verification is not a threat",
+  passport.verdict === VERDICT.SAFE &&
+    !passport.reasons.some((r) => r.id === "threat_of_consequence"),
+  `scored ${passport.score}, fired: ${passport.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+// "Delivery fee" is a line item on every checkout page in existence; it used to
+// convict at weight 2.0 on its own.
+const checkout = await analyzeLocal(
+  "Your cart. Item total Rs 320. Delivery fee Rs 30. GST and charges Rs 42. To pay Rs 392. Proceed to pay."
+);
+check(
+  "a checkout page listing a delivery fee is not an advance-fee scam",
+  !checkout.reasons.some((r) => r.id === "advance_fee"),
+  `scored ${checkout.score}, fired: ${checkout.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+const loanFee = await analyzeLocal(
+  "Your loan of 2 lakh is pre-approved with zero paperwork. Pay the file processing charge to get disbursal in 30 minutes."
+);
+check(
+  "a loan asking for a processing charge up front still fires advance_fee",
+  loanFee.reasons.some((r) => r.id === "advance_fee"),
+  `fired: ${loanFee.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+// login.microsoftonline.com is where every Microsoft 365 sign-in lands. It was
+// missing from the brand's domain list, so the real page read as a harvest.
+const microsoftReal = await pageScan(
+  "Sign in to continue to Outlook. Email, phone, or Skype. No account? Create one! Can't access your account?",
+  {
+    url: "https://login.microsoftonline.com/",
+    title: "Sign in to your account",
+    credentialFields: ["password"],
+    formTargets: ["https://login.microsoftonline.com/common/login"],
+  }
+);
+check(
+  "Microsoft's real sign-in domain is not treated as impersonation",
+  microsoftReal.verdict === VERDICT.SAFE &&
+    !microsoftReal.reasons.some((r) => r.id === "brand_impersonation"),
+  `scored ${microsoftReal.score}, fired: ${microsoftReal.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+// On the authority's own domain the claim is true.
+const taxPortal = await pageScan(
+  "e-Filing Home Page, Income Tax Department, Government of India. Login. Enter your User ID (PAN). File your Income Tax Return.",
+  {
+    url: "https://www.incometax.gov.in/iec/foportal/",
+    title: "Income Tax Department - e-Filing",
+    credentialFields: ["password"],
+    formTargets: ["https://www.incometax.gov.in/iec/foportal/login"],
+  }
+);
+check(
+  "the Income Tax department's own portal is not impersonating the Income Tax department",
+  taxPortal.verdict === VERDICT.SAFE &&
+    !taxPortal.reasons.some((r) => r.id === "impersonated_authority"),
+  `scored ${taxPortal.score}, fired: ${taxPortal.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+const taxMessage = await analyzeLocal(
+  "Income Tax Department notice: you owe unpaid taxes and a warrant has been issued against you."
+);
+check(
+  "the same claim in a message, with no domain vouching for it, still fires",
+  taxMessage.reasons.some((r) => r.id === "impersonated_authority"),
+  `fired: ${taxMessage.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+// Every real login page on the internet has /login in its path.
+const bankLoginPath = await pageScan(
+  "ICICI Bank Internet Banking. User ID. Password. Login. Caution: ICICI Bank never asks for your PIN, OTP, CVV or password. Report suspicious calls immediately.",
+  {
+    url: "https://infinity.icicibank.com/corp/Login.jsp",
+    title: "ICICI Bank Internet Banking",
+    credentialFields: ["password"],
+    formTargets: ["https://infinity.icicibank.com/corp/Login.jsp"],
+  }
+);
+check(
+  "a bank's own login URL does not score for having /login in the path",
+  bankLoginPath.verdict === VERDICT.SAFE &&
+    !bankLoginPath.reasons.some((r) => r.id === "credential_path"),
+  `scored ${bankLoginPath.score}, fired: ${bankLoginPath.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+const unknownLoginPath = await analyzeLocal("Restore access here: https://secure-verify-9f2.tk/login");
+check(
+  "an unknown domain with a login path still scores",
+  unknownLoginPath.reasons.some((r) => r.id === "credential_path"),
+  `fired: ${unknownLoginPath.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
 /* ---------------------------------- report --------------------------------- */
 
 const total = passed + failures.length;

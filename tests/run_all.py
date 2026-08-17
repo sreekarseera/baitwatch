@@ -531,6 +531,14 @@ def main():
                     run_step("Accuracy benchmark",
                              ["node", os.path.join(TESTS, "test_benchmark.mjs")])))
 
+    # Runs after the benchmark and reports the number the benchmark cannot: the
+    # benchmark grades the model on its own training rows, so its false positive
+    # rate reads far better than reality. This one is measured on mail and sites
+    # the model has never seen.
+    results.append(("Held-out false positives",
+                    run_step("Held-out false positives",
+                             ["node", os.path.join(TESTS, "test_holdout.mjs")])))
+
     results.append(("Site adapters",
                     run_step("Site adapters",
                              ["node", os.path.join(TESTS, "test_adapters.mjs")])))

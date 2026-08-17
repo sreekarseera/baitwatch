@@ -16,12 +16,36 @@ import { PSL_RULES, PSL_WILDCARDS, PSL_EXCEPTIONS } from "./psl-data.js";
 // conservative: a generic word ("axis", "upi", "meta") matches ordinary writing
 // far too often to be evidence of anything, so those brands are listed only
 // under a qualified form.
+//
+// `domains` must list every domain the brand *actually signs users in on*, not
+// just its marketing address. A domain missing here is worse than a brand
+// missing entirely: the page says "Outlook", the domain isn't recognised as
+// Microsoft's, and the real sign-in page gets called a credential harvest. That
+// is what login.microsoftonline.com — where every Microsoft 365 and Azure AD
+// login in the world lands — did before microsoftonline.com was added below.
 export const PROTECTED_BRANDS = [
   { name: "PayPal", domains: ["paypal.com"], aliases: ["paypal", "pay pal"] },
   { name: "Amazon", domains: ["amazon.com", "amazon.in", "amazon.co.uk"], aliases: ["amazon"] },
   { name: "Apple", domains: ["apple.com", "icloud.com"], aliases: ["apple id", "icloud", "apple account"] },
-  { name: "Microsoft", domains: ["microsoft.com", "live.com", "outlook.com", "office.com"], aliases: ["microsoft", "outlook", "office 365", "onedrive"] },
-  { name: "Google", domains: ["google.com", "gmail.com", "youtube.com"], aliases: ["google account", "gmail", "google drive"] },
+  {
+    name: "Microsoft",
+    domains: [
+      "microsoft.com",
+      "live.com",
+      "outlook.com",
+      "office.com",
+      "microsoftonline.com",
+      "sharepoint.com",
+      "skype.com",
+      "azure.com",
+    ],
+    aliases: ["microsoft", "outlook", "office 365", "onedrive"],
+  },
+  {
+    name: "Google",
+    domains: ["google.com", "gmail.com", "youtube.com", "google.co.in", "googleusercontent.com"],
+    aliases: ["google account", "gmail", "google drive"],
+  },
   { name: "Netflix", domains: ["netflix.com"], aliases: ["netflix"] },
   { name: "Facebook", domains: ["facebook.com", "instagram.com", "whatsapp.com"], aliases: ["facebook", "instagram", "whatsapp"] },
   { name: "LinkedIn", domains: ["linkedin.com"], aliases: ["linkedin"] },
@@ -327,7 +351,19 @@ export function analyzeUrls(text, extraUrls = []) {
     }
 
     // Credential-harvest paths on a domain that isn't the brand it names.
-    if (/\/(login|signin|verify|secure|account|update|confirm|billing|kyc|otp)\b/i.test(raw) && !lookalike) {
+    //
+    // The "isn't the brand it names" half was in this comment but never in the
+    // code: only lookalikes were excluded, so a bank's own sign-in URL scored
+    // here too. Every real login page on the internet has /login in its path —
+    // infinity.icicibank.com/corp/Login.jsp is the genuine ICICI one — and the
+    // path is only evidence of anything when the domain is not itself known
+    // good.
+    const onKnownBrand = PROTECTED_BRANDS.some((brand) => brand.domains.includes(registrableDomain(host)));
+    if (
+      /\/(login|signin|verify|secure|account|update|confirm|billing|kyc|otp)\b/i.test(raw) &&
+      !lookalike &&
+      !onKnownBrand
+    ) {
       signals.push({
         id: "credential_path",
         weight: 0.6,

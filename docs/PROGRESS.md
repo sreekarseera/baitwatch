@@ -12,27 +12,171 @@ Last updated **2026-08-17**.
 | Repo | `github.com/sreekarseera/baitwatch` (public, MIT) |
 | Archive | `github.com/sreekarseera/baitwatch-archive` (private, the original 32-commit history) |
 | Detection | 24 heuristics + URL analysis + brand impersonation + on-device classifier |
-| Model | 3,555 rows, 94.94% validation, 94.04% ±2.24% five-fold CV, 6,000 terms, 264.5 KB |
-| Tests | 232 engine checks, model parity (tokens + predictions), 5 accuracy gates, 29 adapter checks, 20 browser checks |
+| Model | 3,603 rows, 94.31% validation, 93.81% ±0.88% five-fold CV, 6,000 terms, 263.9 KB |
+| Tests | 252 engine checks, model parity (tokens + predictions), 5 accuracy gates, 3 held-out gates, 29 adapter checks, 20 browser checks |
 
 Measured accuracy, from `node tests/test_benchmark.mjs`:
 
 | | rate |
 |---|---|
-| legitimate mail flagged | 1.06% |
+| legitimate mail flagged | 0.98% |
 | …called *dangerous* | 0.22% |
 | targeted scams missed | 7.83% |
-| Hinglish/Hindi scams missed | 10.50% |
-| …devanagari alone | 19/170 |
-| false alarms on ordinary Hinglish | 2/122 |
+| Hinglish/Hindi scams missed | 10.00% |
+| …devanagari alone | 18/170 |
+| false alarms on ordinary Hinglish | 1/122 |
+
+And from `node tests/test_holdout.mjs`, which is the number to trust for
+false positives — the benchmark above grades the model on rows it trained on:
+
+| | rate |
+|---|---|
+| held-out legitimate mail flagged | 0/54 |
+| held-out real websites flagged | 0/16 |
 
 Validation accuracy and false-positive rate have both moved more than once
 this month — worth reading the dated entries below before assuming a
-regression rather than a deliberate, benchmarked tradeoff. Most recently,
-2026-08-17 pushed validation accuracy from 93.62% to 94.94% while tightening
-every benchmark gate rather than trading one against another — see that
-section for why 95% was the honest ceiling reached, not a round number
-stopped at arbitrarily.
+regression rather than a deliberate, benchmarked tradeoff. In particular,
+validation accuracy went *down* on 2026-08-17 (second entry), from 94.94% to
+94.31%, and that was the point: the corpus it is measured against had no
+modern transactional mail in it at all, so the old number was partly scoring a
+blind spot. Read that entry before trying to win the 0.63 points back.
+
+## 2026-08-17 (later)
+
+**A user reported the extension flagging ordinary websites and mail. It was:
+the real false positive rate was 16.67%, not the 1.06% the benchmark
+reported, and five out of five bank OTP messages were flagged — three of them
+"dangerous".** The benchmark was not lying, it was answering a different
+question, and it says so in its own header comment: the corpus rows are also
+training rows, so the model is graded on data it has seen. What it had never
+been asked was how the extension behaves on mail that is *not* in the corpus.
+
+**Built the held-out measurement first, before changing a single rule.**
+`tests/test_holdout.mjs` scores 54 modern legitimate messages
+(`tests/holdout-legit.csv`, 16 genres: bank OTPs, transaction alerts, order
+and delivery updates, SaaS verification and password resets, sign-in alerts,
+utility bills, subscription renewals, real promotional newsletters, government
+notices, work mail) and 16 real websites (`tests/holdout-pages.json`: the
+actual sign-in pages of Google, Microsoft, HDFC, SBI, ICICI, Amazon, GitHub,
+PayPal, the Income Tax portal, UIDAI, plus ordinary browsing). None of it is
+in `dataset.csv` and none of it may ever be added — the file says so at the
+top, because the moment a row is trained on it stops measuring what it exists
+to measure. First run: **16.67% of legitimate mail flagged, 25% of real
+websites**, against a benchmark reporting 1.06%.
+
+**Nine rule bugs, each found by reading which signal fired rather than by
+guessing.** The pattern across almost all of them is the same one this log has
+hit before — a rule that names a tactic correctly but tests for a noun instead
+of the tactic:
+
+- `credential_request` fired on the anti-fraud warning every real OTP message
+  ends with. "Never share your OTP", "किसी को न बताएं", "kisi ko na bataye"
+  all put a transmission verb next to a credential noun, which is exactly the
+  shape the rule looks for — so the single most reliable marker that a message
+  is *genuine* convicted it. This one bug accounted for five of the nine
+  flagged messages. Fixed by cutting the negated clause out and looking for a
+  request in what remains, rather than skipping the message wholesale: a
+  scammer who pastes a real bank footer above their own ask is still caught on
+  the ask (there is a test for exactly that).
+- `secrecy_request` fired on "Do not share this OTP with anyone" for the same
+  reason. The rule is about isolating you from a second opinion; telling you
+  to keep a *secret* secret is the opposite.
+- `credential_request`'s entry verbs had no object. Bare `update` anywhere in
+  a message counted, so "Your Aadhaar update request has been processed
+  successfully" — a completion notice with nothing to do — read as a
+  credential request. Now requires the verb to point at something ("update
+  *your* details").
+- `gift_card_payment`, at weight 3.0, the heaviest any rule carries, fired on
+  the noun alone. A newsletter offering one as a prize ("a chance to win a
+  gift card") is not a demand for payment in gift cards. Now same-sentence
+  gated to a purchase or transmit verb, the pattern `crypto_transfer` and
+  `prize_or_windfall` already use. The "you've won a $500 gift card, click to
+  claim" rows in `curated.csv` are unaffected in verdict — `prize_or_windfall`
+  and `artificial_urgency` are what catch those.
+- `artificial_urgency` fired on "this link expires in 24 hours". A short-lived
+  link or code is a security control, and every password-reset mail ever sent
+  says one expires. An *account* expiring still fires, and there is a test
+  holding both halves.
+- `artificial_urgency` also fired on "Report suspicious calls immediately" —
+  the notice banks put on their own login pages. A scammer does not urge you
+  to report them.
+- `advance_fee` fired on bare "delivery fee". That alternative of the pattern
+  had no action requirement at all, so a line item on every checkout page in
+  existence convicted at weight 2.0; the real Swiggy cart page came back
+  *dangerous*. Now needs someone asking for it, in either order — which is how
+  the fix was found to be incomplete the first time: requiring the verb to
+  follow the charge broke "Pay the file processing charge", where it precedes
+  it, and `targeted scams missed` went 7.83% → 8.12% and named the row.
+- `HI.police` matched the "पुलिस" in "पुलिस सत्यापन" (police verification) —
+  a routine step in getting a passport, and the most common way the word
+  appears in legitimate Indian mail. Same shape of fix as `वारंट(?!ी)` and
+  `कस्टम(?!र)` before it.
+- `impersonated_authority` had no idea where the text came from, so
+  "Income Tax Department, Government of India" fired on incometax.gov.in. The
+  rule layer now receives whether the page is served from a brand's own
+  registrable domain (`onOfficialDomain` in `engine.js`). On a message, where
+  no domain vouches for anything, the rule keeps its full force.
+
+**Two of the four flagged websites were flagged by data gaps, not logic.**
+`login.microsoftonline.com` — where every Microsoft 365 and Azure AD sign-in
+in the world lands — was not in Microsoft's `domains` list, so the page said
+"Outlook", the domain was not recognised as Microsoft's, and the real sign-in
+page was called a credential harvest at *dangerous*. And `credential_path`'s
+own comment says "on a domain that isn't the brand it names", but the code
+only excluded lookalikes: every real login page on the internet has `/login`
+in its path, so ICICI's genuine one scored too. Both fixed by making the code
+do what the comment already said.
+
+**After the rules: 0/54 and 0/16, with no scam-side cost.** `targeted scams
+missed` and `Hinglish/Hindi scams missed` both finished exactly where they
+started (7.83%, 10.50%), which is the point — none of this traded detection
+for quiet.
+
+**Then the model, which was the actual remaining problem.** With the rules
+clean, nothing crossed the threshold, but the margin was thin for a reason
+worth naming: the classifier leant scam on **32 of the 54** legitimate
+messages, median probability 0.532, and was pushing otherwise-clean mail to
+within two points of a warning purely on its own opinion. The cause is in
+`build_corpus.py`'s own description — the legitimate half of the corpus is
+2002 SpamAssassin ham, mailing lists and Usenet-era personal mail. It contains
+essentially no modern transactional mail, so the model had never seen
+"debited", "OTP", "available balance", "out for delivery", "renews" or "due
+date" in a legitimate context, only in scam ones.
+
+**48 curated legitimate transactional rows, written to the two lessons this
+log already recorded.** Structurally varied rather than templated (2026-08-16),
+with a handful of short phrases — "do not share it with anyone", "available
+balance", "if you did not request this", "no action is required", "you can
+safely ignore this email" — deliberately repeated three or more times each so
+they survive `min_df=3` (2026-08-17, the entry below). English, Roman-script
+Hinglish and Devanagari, and none of them copied from the held-out file.
+
+**Validation accuracy went down, and that is the honest result.** 94.94% →
+94.31%, 5-fold CV 94.04% → 93.81%. But the CV standard deviation collapsed
+from ±2.24% to ±0.88%, and on held-out mail the model now leans scam on 22 of
+54 rather than 32, median probability 0.532 → 0.415 (below 0.5, i.e. correctly
+leaning legitimate at all), and the closest legitimate message to a warning
+moved from 33 to 20 on a threshold of 35. `Hinglish/Hindi scams missed`
+improved on its own, 10.50% → 10.00%. The old number was higher partly because
+it was scoring a blind spot: a corpus with no transactional mail in it cannot
+penalise a model for misreading transactional mail. Per this log's own
+2026-08-17 finding about single-split noise, the tightened CV band is the
+figure to read here.
+
+**16 regression tests added** (`tests/test_engine.mjs`, 236 → 252), each
+pinning the specific rule that was wrong rather than the rate — and each
+paired with its opposite, so "a bank delivering an OTP is not flagged" sits
+next to "a real bank footer pasted above an actual ask does not launder the
+ask". Full suite green including the 20 browser checks under Chrome for
+Testing: 252 engine, parity, 5 benchmark gates, 3 held-out gates, 29 adapter.
+
+**Worth knowing next.** The held-out set is 54 messages and 16 pages, hand-
+written by one person in one sitting — big enough to have found nine real bugs,
+too small for its 0/54 to mean the false positive rate is zero. Growing it, in
+particular with mail nobody on this project would think to write, is the
+highest-value thing available. The 2002 corpus is still 84% of the training
+data and still has no transactional mail beyond the 48 rows added here.
 
 ## 2026-08-17
 

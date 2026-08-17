@@ -1,0 +1,82 @@
+[
+  {
+    "name": "Google sign-in",
+    "text": "Sign in. Use your Google Account. Email or phone. Forgot email? Not your computer? Use Guest mode to sign in privately. Learn more about using Guest mode. Next. Create account. English (United States). Help. Privacy. Terms.",
+    "page": { "url": "https://accounts.google.com/signin", "title": "Sign in - Google Accounts", "credentialFields": ["password"], "formTargets": ["https://accounts.google.com/signin/v2/challenge"] }
+  },
+  {
+    "name": "HDFC NetBanking",
+    "text": "Welcome to HDFC Bank NetBanking. Continue to login. Customer ID / User ID. Please enter your password. Forgot Customer ID? Forgot password? For security reasons, please do not share your Customer ID, password or OTP with anyone. HDFC Bank never asks for these details.",
+    "page": { "url": "https://netbanking.hdfcbank.com/netbanking/", "title": "HDFC Bank NetBanking", "credentialFields": ["password"], "formTargets": ["https://netbanking.hdfcbank.com/netbanking/entry"] }
+  },
+  {
+    "name": "SBI OnlineSBI",
+    "text": "State Bank of India. Personal Banking login. Enter your username and password to continue. Mandatory fields are marked with an asterisk. Do not share your username, password, PIN, OTP or card details with anyone. Report phishing to report.phishing@sbi.co.in.",
+    "page": { "url": "https://retail.onlinesbi.sbi/retail/login.htm", "title": "OnlineSBI - Personal Banking", "credentialFields": ["password"], "formTargets": ["https://retail.onlinesbi.sbi/retail/login.htm"] }
+  },
+  {
+    "name": "Amazon India sign-in",
+    "text": "Sign in. Email or mobile phone number. Continue. By continuing, you agree to Amazon's Conditions of Use and Privacy Notice. Need help? Forgot your password? Other issues with Sign-In. New to Amazon? Create your Amazon account.",
+    "page": { "url": "https://www.amazon.in/ap/signin", "title": "Amazon Sign-In", "credentialFields": ["password"], "formTargets": ["https://www.amazon.in/ap/signin"] }
+  },
+  {
+    "name": "GitHub login",
+    "text": "Sign in to GitHub. Username or email address. Password. Forgot password? Sign in. New to GitHub? Create an account. Terms. Privacy. Docs. Contact GitHub Support.",
+    "page": { "url": "https://github.com/login", "title": "Sign in to GitHub", "credentialFields": ["password"], "formTargets": ["https://github.com/session"] }
+  },
+  {
+    "name": "PayPal login",
+    "text": "Log in to your PayPal account. Email or mobile number. Next. Having trouble logging in? Sign Up. Contact Us. Privacy. Legal. Policy Updates. Worldwide.",
+    "page": { "url": "https://www.paypal.com/signin", "title": "Log in to your PayPal account", "credentialFields": ["password"], "formTargets": ["https://www.paypal.com/signin"] }
+  },
+  {
+    "name": "ICICI iMobile net banking",
+    "text": "ICICI Bank Internet Banking. User ID. Password. Login. Forgot password? Register now. Caution: ICICI Bank never asks for your PIN, OTP, CVV or password over phone, SMS or email. Never share these with anyone. Report suspicious calls immediately.",
+    "page": { "url": "https://infinity.icicibank.com/corp/Login.jsp", "title": "ICICI Bank Internet Banking", "credentialFields": ["password"], "formTargets": ["https://infinity.icicibank.com/corp/Login.jsp"] }
+  },
+  {
+    "name": "Income Tax e-filing portal",
+    "text": "e-Filing Home Page, Income Tax Department, Government of India. Login. Enter your User ID (PAN). Continue. Register. Forgot password? File your Income Tax Return for AY 2026-27. Know your refund status. e-Verify Return. Grievance redressal.",
+    "page": { "url": "https://www.incometax.gov.in/iec/foportal/", "title": "Income Tax Department - e-Filing", "credentialFields": ["password"], "formTargets": ["https://www.incometax.gov.in/iec/foportal/login"] }
+  },
+  {
+    "name": "UIDAI Aadhaar portal",
+    "text": "Unique Identification Authority of India. myAadhaar. Login with Aadhaar number and OTP. Enter your 12 digit Aadhaar number. Request OTP. Download Aadhaar. Update your address. Check Aadhaar update status. Never share your Aadhaar OTP with anyone.",
+    "page": { "url": "https://myaadhaar.uidai.gov.in/", "title": "myAadhaar - UIDAI", "credentialFields": ["otp"], "formTargets": ["https://myaadhaar.uidai.gov.in/login"] }
+  },
+  {
+    "name": "IRCTC booking",
+    "text": "Indian Railway Catering and Tourism Corporation. Book your train ticket. From. To. Date of journey. Search. Login. Register. PNR status. Cancel ticket. My bookings. Refund rules. Contact us.",
+    "page": { "url": "https://www.irctc.co.in/nget/train-search", "title": "IRCTC Next Generation eTicketing System", "credentialFields": ["password"], "formTargets": ["https://www.irctc.co.in/authprovider/webtoken"] }
+  },
+  {
+    "name": "Microsoft 365 login",
+    "text": "Sign in to continue to Outlook. Email, phone, or Skype. No account? Create one! Can't access your account? Sign-in options. Terms of use. Privacy and cookies.",
+    "page": { "url": "https://login.microsoftonline.com/", "title": "Sign in to your account", "credentialFields": ["password"], "formTargets": ["https://login.microsoftonline.com/common/login"] }
+  },
+  {
+    "name": "Zerodha Kite",
+    "text": "Kite by Zerodha. Login to Kite. User ID. Password. Forgot user ID or password? Don't have an account? Signup now. Investments in securities market are subject to market risks; read all the related documents carefully before investing.",
+    "page": { "url": "https://kite.zerodha.com/", "title": "Kite - Zerodha", "credentialFields": ["password"], "formTargets": ["https://kite.zerodha.com/api/login"] }
+  },
+  {
+    "name": "Flipkart product page",
+    "text": "Flipkart. boAt Rockerz 450 Bluetooth Headset. 4.2 stars, 88,412 ratings. Rs 1,499. 40% off. Free delivery by Tomorrow. Bank Offer: 10% off on Axis Bank Credit Card. No Cost EMI available. 7 day replacement policy. Add to cart. Buy now.",
+    "page": { "url": "https://www.flipkart.com/boat-rockerz-450/p/itm123", "title": "boAt Rockerz 450 - Flipkart", "credentialFields": [], "formTargets": [] }
+  },
+  {
+    "name": "Wikipedia article",
+    "text": "Phishing. From Wikipedia, the free encyclopedia. Phishing is a form of social engineering in which an attacker deceives people into revealing sensitive information such as passwords, or into deploying malicious software. Phishing attacks have become increasingly sophisticated. Contents. History. Techniques. Prevention. See also. References.",
+    "page": { "url": "https://en.wikipedia.org/wiki/Phishing", "title": "Phishing - Wikipedia", "credentialFields": [], "formTargets": [] }
+  },
+  {
+    "name": "Swiggy checkout",
+    "text": "Swiggy. Your cart. Paradise Biryani. Chicken Biryani x1. Item total Rs 320. Delivery fee Rs 30. GST and charges Rs 42. To pay Rs 392. Choose payment method. UPI. Credit or debit card. Net banking. Pay on delivery. Proceed to pay.",
+    "page": { "url": "https://www.swiggy.com/checkout", "title": "Swiggy - Checkout", "credentialFields": [], "formTargets": ["https://www.swiggy.com/api/payment"] }
+  },
+  {
+    "name": "Netflix account page",
+    "text": "Netflix. Account. Membership details. Your plan: Premium, Rs 649 per month. Next billing date 22 August 2026. Change plan. Manage payment method. Security. Change password. Sign out of all devices. Profile and Parental Controls.",
+    "page": { "url": "https://www.netflix.com/YourAccount", "title": "Account - Netflix", "credentialFields": [], "formTargets": [] }
+  }
+]
