@@ -13,7 +13,7 @@ Last updated **2026-09-01**.
 | Archive | `github.com/sreekarseera/baitwatch-archive` (private, the original 32-commit history) |
 | Detection | 24 heuristics + URL analysis + brand impersonation + on-device classifier |
 | Model | 3,603 rows, 94.31% validation, 93.81% ±0.88% five-fold CV, 6,000 terms, 263.9 KB |
-| Tests | 324 engine checks, model parity (tokens + predictions), 5 accuracy gates, 3 held-out gates, 9 ambient solo-fire gates, 29 adapter checks, 20 browser checks |
+| Tests | 324 engine checks, model parity (tokens + predictions), 5 accuracy gates, 4 held-out gates, 9 ambient solo-fire gates (all three sources populated), 29 adapter checks, 20 browser checks — full suite, including the browser layer, verified against a real Chrome instance |
 
 Measured accuracy, from `node tests/test_benchmark.mjs`:
 
@@ -33,6 +33,13 @@ false positives — the benchmark above grades the model on rows it trained on:
 |---|---|
 | held-out legitimate mail flagged | 0/66 |
 | held-out real websites flagged | 0/16 |
+| held-out real scam miss rate | 35/55 (63.64%) |
+
+That last number is not a typo and not a regression — read the entry below
+before reacting to it. It's the first honest measurement of miss rate against
+scam text the model has never trained on, and it says the rules are built for
+a different tactic distribution than the one this particular corpus happens
+to contain.
 
 Validation accuracy and false-positive rate have both moved more than once
 this month — worth reading the dated entries below before assuming a
@@ -41,6 +48,106 @@ validation accuracy went *down* on 2026-08-17 (second entry), from 94.94% to
 94.31%, and that was the point: the corpus it is measured against had no
 modern transactional mail in it at all, so the old number was partly scoring a
 blind spot. Read that entry before trying to win the 0.63 points back.
+
+## 2026-09-01 (closing the remaining data and verification gaps)
+
+Four independent worktree agents, each auditing its own diff against its
+self-report before merging (one merge needed a follow-up fix; details
+below). No coordination branch this round — unlike the ambient-gate round,
+none of the four touched overlapping regions of the same files.
+
+**`tests/holdout-ambient.json` populated — 17 real, cited pages.** This file
+existed only as a stub ("not collected yet") in `tests/test_ambient.mjs`
+since it was written; every prior "all solo-fire gates passed" claim this
+month was true only against 2002 mailing-list mail and a 12-row hand-written
+seed file, never against real current web content. Now: 17 rows fetched via
+WebFetch with source URLs recorded — Hacker News comments, Al Jazeera news
+articles, a Wikipedia lead, three bank FD/CD marketing pages (ICICI, SBI,
+Ally — the exact "assured returns" genre already flagged as risky), two
+product/pricing pages, two newsletters (one mentioning a reader who "lost
+$70,000 to hackers," another a Facebook Marketplace/Zelle scam story — both
+real examples of scam-adjacent *topics* appearing in ordinary content, which
+is precisely what this corpus needs to stress-test), and a government tax
+portal. Content that couldn't be genuinely fetched (Reddit, LinkedIn, X,
+several news sites behind bot-checks) was skipped rather than invented.
+**Result: zero solo-fire convictions across all 17 rows, on every rule** — a
+genuine measurement, not an engineered pass; no rule was touched to get
+there. Independently spot-verified before merging: `icici.bank.in` and
+`sbi.bank.in` are the real, current official domains for those banks (a
+recent RBI-mandated migration to a `.bank.in` namespace exclusive to
+verified regulated institutions) — not an accidental phishing-adjacent
+domain slipping into "legitimate" ground truth, which would have been a bad
+way for this exact corpus to go wrong.
+
+**`tests/holdout-scams.csv` created, closing cold-audit finding 3 — and
+`tests/test_holdout.mjs` gets its first scam-miss gate.** Every accuracy
+number this project has ever reported was on the false-positive side; there
+was no held-out corpus and no gate for the opposite failure (missing a real
+scam). 55 real messages from the UCI "SMS Spam Collection" (Almeida & Gomez
+Hidalgo, real UK mobile spam reported 2004-2005, free for research use with
+attribution) — verified independently to have zero exact-text overlap with
+`training/dataset.csv` or `training/curated.csv`. **Measured miss rate:
+35/55 (63.64%).** Read this as tactic-distribution mismatch, not a newly
+broken tool: `premium_rate_subscription_trap` missed 7/7 and
+`windfall_solicitation` 10/11 — 2000s UK premium-rate-SMS tactics
+(`call this 09xx number to claim`, subscription traps billing per message)
+that this rule set was never built to recognize, because it was built around
+credential phishing, UPI/crypto transfers, and gift-card payments — the
+tactics that actually show up in the training corpus and in real reports.
+The gate is set at 65% (one row of headroom above the measurement, not a
+loosened target) specifically so it catches regressions without hiding the
+current number. A pre-merge fix was needed here: the new CSV needed a
+comment header for source/license attribution, and the first version of the
+change stripped every line starting with `#` anywhere in a file before
+parsing — which would silently corrupt a multi-line quoted field whose
+message text happened to contain a line starting with `#` (a hashtag, a
+numbered list item). Currently harmless (no such line exists in either
+holdout file today) but fragile for the next addition; fixed to only strip a
+*leading* contiguous block of `#` lines, so it can never reach into data.
+
+**The browser/adapter test layer ran against a real Chrome instance for the
+first time this project's visible history records.** Every prior session
+report ended with "Chrome for Testing is not installed here" and skipped 20
+browser checks plus part of the 29 adapter checks. `npx @puppeteer/browsers
+install chrome@stable` worked on the first attempt (`chrome@152.0.7977.64`);
+`CHROME_BIN=<installed path> python3 tests/run_all.py` then ran all 7
+suites clean, including: service worker registration, extension API access
+inside the worker, the fresh-install-has-no-host-access assertion, the
+model's full 6,000-term vocabulary loading under MV3's CSP, warning
+injection on a scam page and its absence on a clean one, the full
+content-script → service-worker → storage round trip, and a whole-page
+phishing scan (link-target detection, form-action collection, email
+harvesting, sender attribution). No bugs found, nothing to fix.
+`tests/README.md` said 18 browser checks; the actual count is 20 — fixed.
+
+**Security review of the extension's own code — clean, independently
+verified rather than just trusted.** No prior review had looked at this
+public, live, installed extension as its own attack surface: it renders
+attacker-controlled message/page text into its own UI by design, and stores
+an optional user-supplied Claude API key. Checked: XSS via
+`innerHTML`/`outerHTML`/`insertAdjacentHTML`/`document.write` (zero hits —
+every DOM-writing path, including the in-page warning banner rendered inside
+a *closed shadow root* on hostile pages, uses `createElement`/`textContent`
+exclusively); CSP (`script-src 'self'; object-src 'self'`, no
+`unsafe-inline`/`unsafe-eval`, no `eval(`/`new Function(` anywhere); the API
+key (stored in `chrome.storage.local` only, never `sync`, sent only to
+`api.anthropic.com`, never logged, input field is `type="password"`);
+message-passing trust boundaries (no `externally_connectable` in the
+manifest, so no arbitrary web page can reach the service worker's message
+listener at all — a Chrome-enforced boundary, not something the code has to
+defend on its own); and permission scope (every declared permission still
+has a real call site). Independently re-grepped every one of these claims
+before accepting the "clean" result rather than trusting the report as-is —
+all held up. No commit; nothing needed fixing.
+
+**Net result:** all 9 ambient solo-fire gates pass (all three sources —
+corpus, ambient-seed, and now ambient-holdout — populated and green); the
+held-out suite has 4 gates instead of 3, with the new one reporting a real,
+unflattering, honestly-measured number instead of not existing; the full
+test suite (`test_engine.mjs`, `test_ambient.mjs`, `test_holdout.mjs`,
+`test_benchmark.mjs`, `test_parity.py`, and now the browser/adapter layer
+via `run_all.py`) has actually run end to end against real Chrome, not just
+Node.
 
 ## 2026-09-01 (closing the ambient solo-fire gate)
 

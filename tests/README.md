@@ -9,7 +9,7 @@ Six layers, cheapest first. `python3 tests/run_all.py` runs all of them.
 | Adapter health | `test_adapters.mjs` | 29 checks: each adapter's selectors and landmarks still describe its site, and a broken adapter is reported rather than going quiet — without taking the content script down with it |
 | Accuracy benchmark | `test_benchmark.mjs` | Five gates on measured false-positive and miss rates, over the whole corpus through the real fused engine |
 | Solo-fire gate | `test_ambient.mjs` | A per-rule ceiling on how often each rule convicts legitimate text *alone*, with nothing corroborating it — the rule-shape failure the accuracy gates cannot see |
-| Browser smoke | `run_all.py` | 18 checks: the extension loads in Chrome, the packaged model loads under MV3's CSP, a real page gets warned on, and a fake sign-in page is caught via its link targets |
+| Browser smoke | `run_all.py` | 20 checks: the extension loads in Chrome, the packaged model loads under MV3's CSP, a real page gets warned on, and a fake sign-in page is caught via its link targets |
 
 ## Why parity is a test and not a comment
 
