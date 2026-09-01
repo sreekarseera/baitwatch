@@ -30,12 +30,18 @@ const { analyzeLocal, VERDICT } = await import(join(ext, "engine", "engine.js"))
 const verbose = process.argv.includes("--verbose");
 
 function parseCsv(text) {
-  // Leading "#" lines are comments (source/license attribution etc.) — strip them
-  // before parsing. None of the actual data rows in these files start with "#".
-  text = text
-    .split("\n")
-    .filter((line) => !line.startsWith("#"))
-    .join("\n");
+  // Only lines *before any CSV content starts* are comments (source/license
+  // attribution). Filtering every "#"-led line anywhere, unconditionally, would
+  // corrupt a multi-line quoted field whose message text happens to contain a
+  // line starting with "#" (a hashtag, a numbered "#3 step" list item) — this
+  // stops at the first non-"#" line instead, so it can only ever remove a
+  // contiguous header block, never reach into the data that follows it.
+  const lines = text.split("\n");
+  let firstContentLine = 0;
+  while (firstContentLine < lines.length && lines[firstContentLine].startsWith("#")) {
+    firstContentLine += 1;
+  }
+  text = lines.slice(firstContentLine).join("\n");
   const rows = [];
   let row = [];
   let field = "";
