@@ -1,6 +1,6 @@
 # Tests
 
-Five layers, cheapest first. `python3 tests/run_all.py` runs all of them.
+Six layers, cheapest first. `python3 tests/run_all.py` runs all of them.
 
 | Layer | File | What it protects |
 |---|---|---|
@@ -8,6 +8,7 @@ Five layers, cheapest first. `python3 tests/run_all.py` runs all of them.
 | Detection engine | `test_engine.mjs` | 164 behavioural checks: scams caught, ordinary mail left alone, URL and whole-page logic correct |
 | Adapter health | `test_adapters.mjs` | 29 checks: each adapter's selectors and landmarks still describe its site, and a broken adapter is reported rather than going quiet — without taking the content script down with it |
 | Accuracy benchmark | `test_benchmark.mjs` | Five gates on measured false-positive and miss rates, over the whole corpus through the real fused engine |
+| Solo-fire gate | `test_ambient.mjs` | A per-rule ceiling on how often each rule convicts legitimate text *alone*, with nothing corroborating it — the rule-shape failure the accuracy gates cannot see |
 | Browser smoke | `run_all.py` | 18 checks: the extension loads in Chrome, the packaged model loads under MV3's CSP, a real page gets warned on, and a fake sign-in page is caught via its link targets |
 
 ## Why parity is a test and not a comment
@@ -44,6 +45,35 @@ prints.
 It also prints a corpus-wide false negative rate that is deliberately not gated.
 That number is dominated by 2002-era commercial advertising the extension is not
 trying to warn about, so a limit on it would penalise correct behaviour.
+
+## What the solo-fire gate is for
+
+Every rule weighs at least 1.2 and the score curve puts the warning threshold at
+a raw weight of 1.12, so **every rule can warn the user firing entirely alone**.
+Requiring a second signal is not available — 62% of the scams this tool catches
+rest on a single rule — so each rule has to describe an act no legitimate sender
+performs. Rules that describe a *topic* instead (arrest, government, prize,
+investing) are not sufficient evidence while the scorer treats them as if they
+were, and nothing measured which rules those are until this file existed.
+
+`test_ambient.mjs` counts, per rule, how many legitimate rows that rule convicts
+with no other signal present, and gates each rule separately against a measured
+ceiling. Per-rule and not an aggregate on purpose: an aggregate lets one
+catastrophic rule hide behind twenty good ones.
+
+It reads legitimate text only, so **it says nothing about recall**. A rule that
+fires on nothing scores perfectly here. Read it next to `test_benchmark.mjs`;
+green here and red there is a loss, not a win.
+
+Sources: the 1,834 label-0 rows of `training/dataset.csv`, the hand-written
+`tests/ambient-seed.json`, and `tests/holdout-ambient.json` — captured web text
+of the kind the extension actually reads, skipped with a message when absent.
+Nothing in `tests/holdout-*` may ever enter the training corpus.
+
+```bash
+node tests/test_ambient.mjs --verbose   # the rows behind every number
+node tests/test_ambient.mjs --baseline  # re-measured limits, ready to paste
+```
 
 ## Running
 

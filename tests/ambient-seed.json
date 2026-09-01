@@ -1,0 +1,158 @@
+[
+  {
+    "name": "LinkedIn feed post — admission congratulation",
+    "site": "linkedin.com",
+    "kind": "feed-post",
+    "captured": "2026-09-01",
+    "text": "Congratulations to Ananya Rao on securing admission to Carnegie Mellon University for the MS in Computer Science! Ananya interned with us last summer and built the internal search tooling our support team now uses every day. We are going to miss her, and we cannot wait to see what she does next. Wishing you all the very best, Ananya!",
+    "page": {
+      "url": "https://www.linkedin.com/feed/",
+      "title": "Feed | LinkedIn",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "News report — arrests in a cyber fraud case",
+    "site": "thehindu.com",
+    "kind": "news-article",
+    "captured": "2026-09-01",
+    "text": "Four arrested in Rs 2.3 crore online investment fraud. The Cyberabad police on Tuesday arrested four men accused of running a fake trading application that promised guaranteed monthly returns to more than 200 investors. Police said the accused collected money through UPI transfers and stopped responding once the deposits crossed Rs 50,000 per investor. A case has been registered under the Information Technology Act and the accused were produced before a magistrate. Investigators have urged the public to verify any investment platform with SEBI before transferring money, and to report fraud on the national cybercrime helpline.",
+    "page": {
+      "url": "https://www.thehindu.com/news/cities/Hyderabad/four-arrested-in-online-investment-fraud/article12345678.ece",
+      "title": "Four arrested in Rs 2.3 crore online investment fraud - The Hindu",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "Financial newsletter — weekly market wrap",
+    "site": "substack.com",
+    "kind": "newsletter",
+    "captured": "2026-09-01",
+    "text": "This week in markets. The Nifty closed 1.2% higher, led by banking and IT. Two IPOs open on Monday and both are priced well above their last private round, which is usually where returns go to die. My own position is unchanged: I hold index funds and a small allocation to a short-duration debt fund. Nobody, including me, can promise you a return, and anyone who does is selling something. If you are new here, start with the archive post on why chasing last year's best performing scheme is the most reliable way to underperform.",
+    "page": {
+      "url": "https://plainmoney.substack.com/p/this-week-in-markets",
+      "title": "This week in markets - Plain Money",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "Reddit comment — mailing list thread on a court ruling",
+    "site": "reddit.com",
+    "kind": "comment",
+    "captured": "2026-09-01",
+    "text": "The court did not rule on the merits at all. It sent the matter back to the tribunal because the original order never explained why the penalty was set at that amount. That is a procedural point, not a win for either side, and the fine can absolutely be reimposed after a reasoned order. People in this thread are reading a headline and arguing about something that did not happen.",
+    "page": {
+      "url": "https://www.reddit.com/r/india/comments/1abcdef/high_court_sets_aside_penalty_order/",
+      "title": "High court sets aside penalty order : r/india",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "Product page — laptop listing",
+    "site": "amazon.in",
+    "kind": "product-page",
+    "captured": "2026-09-01",
+    "text": "ThinkPad E14 Gen 6, AMD Ryzen 7, 16GB RAM, 512GB SSD, 14-inch WUXGA display, Windows 11 Pro. Limited time deal ends in 6 hours. 18% off. EMI from Rs 4,200 per month. In stock. Free delivery Thursday, 4 September. Sold by Cloudtail Retail and fulfilled by Amazon. Return policy: returnable within 7 days of delivery. Warranty: 1 year onsite manufacturer warranty. Frequently bought together: laptop sleeve, wireless mouse.",
+    "page": {
+      "url": "https://www.amazon.in/dp/B0EXAMPLE01",
+      "title": "ThinkPad E14 Gen 6 - Amazon.in",
+      "credentialFields": [],
+      "formTargets": ["https://www.amazon.in/cart/add"]
+    }
+  },
+  {
+    "name": "Bank product page — fixed deposit rates",
+    "site": "hdfcbank.com",
+    "kind": "product-page",
+    "captured": "2026-09-01",
+    "text": "Fixed Deposit interest rates. Book a fixed deposit online and earn assured returns of up to 7.25% per annum, with an additional 0.50% for senior citizens. Deposits are insured up to Rs 5 lakh by DICGC. Interest is paid monthly, quarterly or on maturity. Premature withdrawal attracts a penalty of 1% on the applicable rate. Calculate your maturity amount with the FD calculator. Terms and conditions apply.",
+    "page": {
+      "url": "https://www.hdfcbank.com/personal/save/deposits/fixed-deposit",
+      "title": "Fixed Deposit Interest Rates - HDFC Bank",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "Documentation page — password reset API",
+    "site": "stripe.com",
+    "kind": "docs",
+    "captured": "2026-09-01",
+    "text": "Resetting a user password. Send a POST request to the endpoint with the user id. The API responds with a one-time token that expires after 15 minutes. Never log the token, and never transmit it over an unencrypted channel. Your application should present a form where the user enters a new password; do not ask the user for their existing password, and do not email credentials in plain text. Rate limits apply: 5 reset requests per user per hour.",
+    "page": {
+      "url": "https://docs.example-payments.com/api/auth/password-reset",
+      "title": "Password reset - API reference",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "Government portal — income tax filing deadline notice",
+    "site": "incometax.gov.in",
+    "kind": "notice",
+    "captured": "2026-09-01",
+    "text": "Income Tax Department, Government of India. The due date for filing income tax returns for assessment year 2026-27 is 30 September 2026. Returns filed after the due date attract a late filing fee under section 234F and interest under section 234A. Taxpayers are advised to verify their Annual Information Statement before filing. For assistance, use the helpdesk link on this portal.",
+    "page": {
+      "url": "https://www.incometax.gov.in/iec/foportal/help/filing-deadline",
+      "title": "Filing deadline - Income Tax Department",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "Hacker News comment — security team incident writeup",
+    "site": "news.ycombinator.com",
+    "kind": "comment",
+    "captured": "2026-09-01",
+    "text": "Our security team ran the postmortem on this last year. The root cause was an expired certificate on an internal service, and the outage lasted nine minutes. What made it worse was that the alert routed to a rotation nobody was on. We now page two humans for anything touching auth. The writeup is public if anyone wants the detail; the interesting part is not the certificate, it is that the monitoring was technically working the whole time.",
+    "page": {
+      "url": "https://news.ycombinator.com/item?id=41234567",
+      "title": "Certificate expiry took down our auth service | Hacker News",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "Job posting — support engineer role",
+    "site": "naukri.com",
+    "kind": "job-post",
+    "captured": "2026-09-01",
+    "text": "Hiring: Customer Support Engineer, Bengaluru, 2-4 years experience. You will work with the product team to resolve escalations, write internal documentation and improve our help centre. Salary Rs 8-12 lakh per annum plus benefits. Apply through this portal only. We never charge candidates a fee at any stage of hiring, and we do not ask for documents over WhatsApp. Applications close 20 September.",
+    "page": {
+      "url": "https://www.naukri.com/job-listings-customer-support-engineer-bengaluru",
+      "title": "Customer Support Engineer - Bengaluru",
+      "credentialFields": [],
+      "formTargets": ["https://www.naukri.com/apply"]
+    }
+  },
+  {
+    "name": "Delivery tracking page — parcel out for delivery",
+    "site": "delhivery.com",
+    "kind": "tracking-page",
+    "captured": "2026-09-01",
+    "text": "Tracking ID 1234567890. Status: out for delivery. Your parcel left the Bengaluru South facility this morning and is with the delivery agent. Expected delivery today between 2 PM and 6 PM. If nobody is available, the agent will attempt delivery again tomorrow. Update your delivery preferences from the order page in your account. No payment is due; this shipment is prepaid.",
+    "page": {
+      "url": "https://www.delhivery.com/track/package/1234567890",
+      "title": "Track your shipment - Delhivery",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "Feed post (Hinglish) — festival greeting",
+    "site": "facebook.com",
+    "kind": "feed-post",
+    "captured": "2026-09-01",
+    "text": "Sabko Ganesh Chaturthi ki dher saari badhai! Is saal humne ghar par hi eco-friendly murti banayi hai, mitti se. Bacchon ne poori decoration khud ki. Aap sab apne photos comments mein share kijiye, dekhne ka mann hai. Ganpati Bappa Morya!",
+    "page": {
+      "url": "https://www.facebook.com/groups/bengalurufamilies/posts/1234567890/",
+      "title": "Bengaluru Families | Facebook",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  }
+]

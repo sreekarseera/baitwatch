@@ -4,7 +4,8 @@ Four layers, cheapest first:
 
   1. Model parity   — the JS re-implementation still matches scikit-learn.
   2. Engine         — behavioural checks on scams, legitimate mail, URLs, plus
-                      the accuracy gates on the whole fused engine.
+                      the accuracy gates on the whole fused engine, and the
+                      per-rule solo-fire gate on legitimate text.
   3. Adapters       — the site selectors still collect, and the health monitor
                       still tells a rotted selector from an empty page.
   4. Browser smoke  — the extension actually loads in Chrome, the service
@@ -544,6 +545,15 @@ def main():
     results.append(("Held-out false positives",
                     run_step("Held-out false positives",
                              ["node", os.path.join(TESTS, "test_holdout.mjs")])))
+
+    # Neither of the two above can see the failure this one is for. They ask
+    # how often the extension is wrong; this asks whether any single rule is
+    # willing to convict legitimate text with nothing corroborating it, which
+    # is the shape that produces false positives nobody's corpus contains yet.
+    # It reads legitimate text only and says nothing about recall.
+    results.append(("Solo-fire on legitimate text",
+                    run_step("Solo-fire on legitimate text",
+                             ["node", os.path.join(TESTS, "test_ambient.mjs")])))
 
     results.append(("Site adapters",
                     run_step("Site adapters",
