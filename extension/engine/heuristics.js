@@ -949,9 +949,20 @@ const RULES = [
       const action =
         /reschedul|re-?dispatch|re-?deliver|\bconfirm|\bverif|update\s*your\s*address/.test(t) ||
         /रिलीज़|दोबारा\s*भेज|पता\s*अपडेट|अपडेट\s*कर/.test(t);
+      // Not HI.fee directly: its Latin alternatives ("fee", "charge", "duty")
+      // are bare substrings with no \b, by design — proximity-gated call sites
+      // elsewhere put a sentence between them and a send-verb, which a lone
+      // substring can't satisfy. This rule has no such gate, so on its own
+      // "fee" is enough to turn "helpful feedback" into a paid-delivery
+      // signal ("RE: [ILUG] Newby to Linux ... thank all of you for the fast
+      // and very helpful feedback" solo-fired on exactly that). The Latin
+      // words are already covered, word-bounded, on the line above; only the
+      // Devanagari-script terms (safe from this trap — \b does not treat them
+      // as word characters, so they were never the substring risk) are worth
+      // repeating here.
       const payment =
         /\b(?:pay|paying|payment|fees?|charges?|deposit|customs|duty)\b/.test(t) ||
-        new RegExp(`${HI.fee}|भर(?:कर|ें|ना|ो)?`).test(t);
+        /shulk|शुल्क|फ़?ीस|ड्यूटी|चार्ज|क्लियरेंस|भर(?:कर|ें|ना|ो)?/.test(t);
 
       return [failed, action, payment].filter(Boolean).length >= 2;
     },

@@ -220,6 +220,17 @@ const LEGIT = [
   // the other two branches of the same regex already had.
   ["libertarian party press release on military spending, mentions being \"charged\" to \"taxpayers\"",
    "LP RELEASE: Outrageous military spending\n-----BEGIN PGP SIGNED MESSAGE-----\n\n===============================\nNEWS FROM THE LIBERTARIAN PARTY\n2600 Virginia Avenue, NW, Suite 100\nWashington DC 20037\nWorld Wide Web: http://www.LP.org\n===============================\nFor release: July 25, 2002\n===============================\nFor additional information:\nGeorge Getz, Press Secretary\nPhone: (202) 333-0008 Ext. 222\nE-Mail: someone@example.com\n===============================\n\nThousands spent on strippers, golf memberships\nshows Pentagon spending is out of control, Libertarians say\n\nWASHINGTON, DC -- Quiz question: Which of the following items have been \ncharged to the taxpayers recently by military personnel wielding \ngovernment-issued credit cards?\n\n(a) $38,000 for lap dancing at strip clubs near military bases."],
+  // Real corpus solo-fire, tests/test_ambient.mjs [corpus] delivery_redispatch_fee:
+  // an ILUG mailing-list reply about building a package from source. "cannot
+  // open load file" tripped the rule's `failed` branch, and "helpful feedback"
+  // tripped `payment` — not because it says anything about paying, but because
+  // HI.fee's Latin alternatives ("fee", "charge", "duty") are bare substrings
+  // with no \b, so "fee" matched inside "feedback". Fixed by dropping the
+  // Latin duplicates from that rule's local payment check (they're already
+  // word-bounded on the line above) and keeping only the Devanagari terms,
+  // which were never the substring risk.
+  ["mailing-list reply about a build failure, not a delivery",
+   "RE: [ILUG] Newby to Linux looking for information on cvs\nHello all,\nFirstly I'd like to thank all of you for the fast and very helpful feedback\nthat I got to my question today. I have one more question though. I\ndownloaded the w3 and url files from the server at the first try thanks to\nthe help that I received today. Then though I tried to build them. I\nstarted by trying the w3 program. I used the following lines which produced\nsome strange results. Would any one be able to set me straight?\n\n./configure --with-emacs --prefix=/usr/local/src/beta/w3 --exec-prefix=/usr/\nlocal/src/beta/w3 --with-url=/url/url\nThat worked fine so I moved to the next step.\nmake\nAt the bottem of the text I got the following messages:\nCannot open load file: /url/url/url-vars.el\nmake[1]: *** [custom-load.el] Error 255\nmake[1]: Leaving directory `/usr/local/src/beta/w3/lisp'\nmake: *** [w3] Error 2\n\nWhen I got around to trying the url package I had no problems. In saying\nthat this doesn't necessarily mean that I was doing it right so below are\nthe commands I used.\n./configure --with-emacs --prefix=/url/url --exec-prefix=/url/url\nfollowed by the commands make and make install.\nThere is no text files which conta"],
 ];
 
 for (const [name, text] of LEGIT) {
