@@ -327,6 +327,26 @@ const INVESTMENT_PROMISE_RE = new RegExp(
     `|(?:${PROMISED_YIELD_RE})[^।.!?]{0,80}(?:${INVESTMENT_INSTRUMENT_RE})`
 );
 
+// A news report *about* a fraud case narrates the same promise the scam made,
+// but in the third person and past tense, aimed at nobody: "a fake trading
+// application that promised guaranteed monthly returns to more than 200
+// investors" contains the exact promised-yield shape above, next to the exact
+// instrument word ("trading"), and still is not a pitch — it is a report that
+// one already happened and was caught. The words that appear in that sentence
+// never appear in the pitch itself, because the pitch wants you to believe the
+// scheme is live and legitimate, not adjudicated: an arrest, a custody, an
+// investigator, a case number, a police force. This is the same directional
+// problem threat_of_consequence solved this morning ("six arrested for
+// attacking a jockey" vs "you will be arrested") — here the fix is a plain
+// exclusion rather than a same-sentence frame, because unlike a threat, a
+// yield promise has no second-person form to require: a bank's own product
+// page ("book a fixed deposit online and earn assured returns") is just as
+// impersonal as the news report is, so direction can't be the signal for this
+// rule. Reporting language is what's left to gate on. See tests/ambient-seed.json,
+// "News report — arrests in a cyber fraud case".
+const FRAUD_CASE_REPORT_RE =
+  /\b(?:police|arrest(?:ed|s)?|accused|custody|magistrate|charge[\s-]?sheet|convicted|investigat(?:ors?|ion|ing|ed)|cybercrime|case\s*(?:has\s*been\s*)?registered|produced\s*before)\b/;
+
 // A gift card named anywhere used to be the whole rule, at the heaviest weight
 // any rule carries (3.0) — enough to convict on its own. But the tactic this
 // rule names is being asked to *pay* in gift cards, and an ordinary retail
@@ -639,6 +659,13 @@ const RULES = [
       // clause rather than the message keeps "your account expires in 24 hours,
       // this link expires soon" firing on the half that matters.
       const t2 = t
+        // A URL is an address, not prose. "http://urgent.rug.ac.be/" trips
+        // the word "urgent" without a single human sentence containing it —
+        // a Belgian radio station's own domain name, not manufactured
+        // pressure. No scam's urgency language lives inside the link itself
+        // (it is always in the surrounding text, which this strip leaves
+        // untouched), so dropping URLs outright costs nothing real.
+        .replace(/\bhttps?:\/\/\S+/gi, " ")
         .replace(
           // "password" deliberately not in this list, though it was at first.
           // A *link*, code, token or session expiring is a security control the
@@ -660,7 +687,22 @@ const RULES = [
         // bank puts on its own login page, and it read as the pressure it warns
         // about. A scammer does not urge you to report them, so the urgency in
         // a report-this instruction always belongs to the defender.
-        .replace(/\breport\s+(?:any\s+|all\s+)?(?:suspicious|fraudulent|fraud|phishing|unauthori[sz]ed|this|it)\b[^.!?]{0,40}/g, " ");
+        .replace(/\breport\s+(?:any\s+|all\s+)?(?:suspicious|fraudulent|fraud|phishing|unauthori[sz]ed|this|it)\b[^.!?]{0,40}/g, " ")
+        // "Larger studies are urgently needed" / "urgently-needed food aid" is
+        // a shortage, not a countdown: "urgently" modifies "needed" — a
+        // reporter's judgment about a third-party situation — and no one is
+        // being rushed. A scam's "urgently" always attaches to something the
+        // *reader* is told to do (respond, send, verify, act), never to a
+        // thing being in short supply, so this specific adjectival use is the
+        // one construction safe to drop.
+        .replace(/\burgent(?:ly)?[\s-]+needed\b/g, " ")
+        // "The government should immediately announce..." is a recommendation
+        // about a third party's future action, not a directive aimed at the
+        // reader — the shape every real "immediately" scam pretext (verify
+        // immediately, call immediately, respond immediately) shares is an
+        // imperative or a command to the person reading it, never "X should
+        // immediately Y" about someone else.
+        .replace(/\bshould\s+immediately\b/g, " ");
       return (
         /\b(?:within\s*\d+\s*(?:hour|hr|minute|min|day)|in\s*the\s*next\s*\d+\s*(?:hour|minute)|before\s*(?:midnight|today|tonight|it\s*expires)|expir(?:es|ing|e)\s*(?:today|soon|in)|last\s*(?:chance|warning)|final\s*(?:notice|warning|reminder)|immediately|right\s*away|act\s*now|urgent(?:ly)?|asap)\b/.test(t2) ||
         new RegExp(`\\b(?:${HI.urgentLatin})\\b|${HI.urgentDevanagari}|आज\\s*रात|aaj\\s*raat`).test(t2)
@@ -735,7 +777,15 @@ const RULES = [
       // dangerous on nothing else. An advance fee is only a scam when someone
       // is asking you to send it.
       new RegExp(
-        `(?:${HI.fee})[^.!?]{0,25}(?:${HI.send}|bhar|भर|pay)` +
+        // "pay" needs the same \b the other two branches already give it.
+        // Without it this branch matched "charge" (bare, inside HI.fee, itself
+        // a substring of "charged") followed by "pay" bare inside "taxpayers"
+        // — "...items have been charged to the taxpayers recently..." — and
+        // convicted a Libertarian Party press release on military spending
+        // alone. Nothing in that sentence names a cost or asks for one sent;
+        // both "words" were fragments of unrelated words that happened to
+        // land within 25 characters of each other.
+        `(?:${HI.fee})[^.!?]{0,25}(?:${HI.send}|bhar|भर|pay\\b)` +
           // Either order, like CRYPTO_TRANSFER_RE: "pay the file processing
           // charge" puts the verb first, "delivery fee bhejiye" puts it last.
           `|(?:file|delivery|clearance|क्लियरेंस|processing)\\s*(?:${HI.fee})[^.!?]{0,30}(?:${HI.send}|bhar|भर|pay\\b)` +
@@ -941,9 +991,20 @@ const RULES = [
       const action =
         /reschedul|re-?dispatch|re-?deliver|\bconfirm|\bverif|update\s*your\s*address/.test(t) ||
         /रिलीज़|दोबारा\s*भेज|पता\s*अपडेट|अपडेट\s*कर/.test(t);
+      // Not HI.fee directly: its Latin alternatives ("fee", "charge", "duty")
+      // are bare substrings with no \b, by design — proximity-gated call sites
+      // elsewhere put a sentence between them and a send-verb, which a lone
+      // substring can't satisfy. This rule has no such gate, so on its own
+      // "fee" is enough to turn "helpful feedback" into a paid-delivery
+      // signal ("RE: [ILUG] Newby to Linux ... thank all of you for the fast
+      // and very helpful feedback" solo-fired on exactly that). The Latin
+      // words are already covered, word-bounded, on the line above; only the
+      // Devanagari-script terms (safe from this trap — \b does not treat them
+      // as word characters, so they were never the substring risk) are worth
+      // repeating here.
       const payment =
         /\b(?:pay|paying|payment|fees?|charges?|deposit|customs|duty)\b/.test(t) ||
-        new RegExp(`${HI.fee}|भर(?:कर|ें|ना|ो)?`).test(t);
+        /shulk|शुल्क|फ़?ीस|ड्यूटी|चार्ज|क्लियरेंस|भर(?:कर|ें|ना|ो)?/.test(t);
 
       return [failed, action, payment].filter(Boolean).length >= 2;
     },
@@ -999,6 +1060,11 @@ const RULES = [
     weight: 2.2,
     why: "It promises a guaranteed or unusually high return on an investment. Real investments carry risk — nobody can guarantee a return, and this is the setup for a payout that never comes.",
     test: (t) =>
+      // Reporting about a fraud case, not a pitch — see FRAUD_CASE_REPORT_RE.
+      // Checked first and short-circuits the whole rule: every branch below
+      // is the shape a report *about* a scam can also contain.
+      !FRAUD_CASE_REPORT_RE.test(t) &&
+      (
       // "guarantee(s/d) ... return/profit/income" gated within a sentence,
       // not requiring the words to sit directly next to each other — real
       // pitches say "guarantees 40 percent monthly returns", not "guaranteed
@@ -1007,7 +1073,20 @@ const RULES = [
       // *whitespace* characters, not zero or more words — "returns" itself
       // was also never matched since the noun side had no plural either.
       /\bguarantee[ds]?\b[^.!?]{0,30}\b(?:returns?|profits?|income)\b/.test(t) ||
-      /double\s*(?:your\s*)?money|assured\s*returns?/.test(t) ||
+      // "assured returns" used to be its own ungated alternative here,
+      // matching the bare phrase anywhere in the message. A bank's own FD
+      // product page says exactly this — "book a fixed deposit online and
+      // earn assured returns of up to 7.25% per annum" — with no instrument
+      // word this rule recognises ("deposit" isn't in
+      // INVESTMENT_INSTRUMENT_RE) and no act beyond describing its own
+      // product. "assured" and "returns" are already YIELD_QUALIFIER_RE and
+      // YIELD_NOUN_RE, so PROMISED_YIELD_RE already matches this phrase on
+      // its own; what it was missing was INVESTMENT_PROMISE_RE's instrument
+      // gate. Dropping the bare alternative and leaning on that gate instead
+      // costs nothing measured — neither "assured return" nor "assured
+      // returns" appears anywhere in training/dataset.csv or
+      // training/curated.csv, gated or not.
+      /double\s*(?:your\s*)?money/.test(t) ||
       // गारंटीड रिटर्न / पैसा डबल / डेली प्रॉफिट — none of this needs a
       // digit to be recognisable, which matters because normalize() folds
       // digits onto letters ("40%" survives as letters, not as "40").
@@ -1015,7 +1094,7 @@ const RULES = [
       // The instrument in the same sentence as a promised yield — see
       // INVESTMENT_PROMISE_RE, which replaces the ungated conjunction that used
       // to close this rule.
-      INVESTMENT_PROMISE_RE.test(t),
+      INVESTMENT_PROMISE_RE.test(t)),
   },
   {
     id: "windfall_solicitation",

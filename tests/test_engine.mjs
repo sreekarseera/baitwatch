@@ -212,6 +212,25 @@ const LEGIT = [
    "[Spambayes] Deployment. FYI, I'll never trust such a scheme: I have no idea what the security team would say about it, and the government would probably have opinions too. Anyway, that was my two cents."],
   ["hindi crime report — a filed case is a fact being reported, not a threat made to you (was 49)",
    "पुलिस ने मामला दर्ज किया है और जांच जारी है। साइबर सेल के अधिकारियों ने बताया कि यह गिरोह पिछले साल से सक्रिय था।"],
+  // Real false positive, found by tests/test_ambient.mjs's mailing-list
+  // corpus: advance_fee solo-convicted this row on "charged" (matching bare
+  // "charge" inside HI.fee) followed within 25 characters by "taxpayers"
+  // (matching bare "pay" with no boundary) — two word fragments, not a named
+  // fee and a send verb. Fixed by giving that "pay" alternative the same \b
+  // the other two branches of the same regex already had.
+  ["libertarian party press release on military spending, mentions being \"charged\" to \"taxpayers\"",
+   "LP RELEASE: Outrageous military spending\n-----BEGIN PGP SIGNED MESSAGE-----\n\n===============================\nNEWS FROM THE LIBERTARIAN PARTY\n2600 Virginia Avenue, NW, Suite 100\nWashington DC 20037\nWorld Wide Web: http://www.LP.org\n===============================\nFor release: July 25, 2002\n===============================\nFor additional information:\nGeorge Getz, Press Secretary\nPhone: (202) 333-0008 Ext. 222\nE-Mail: someone@example.com\n===============================\n\nThousands spent on strippers, golf memberships\nshows Pentagon spending is out of control, Libertarians say\n\nWASHINGTON, DC -- Quiz question: Which of the following items have been \ncharged to the taxpayers recently by military personnel wielding \ngovernment-issued credit cards?\n\n(a) $38,000 for lap dancing at strip clubs near military bases."],
+  // Real corpus solo-fire, tests/test_ambient.mjs [corpus] delivery_redispatch_fee:
+  // an ILUG mailing-list reply about building a package from source. "cannot
+  // open load file" tripped the rule's `failed` branch, and "helpful feedback"
+  // tripped `payment` — not because it says anything about paying, but because
+  // HI.fee's Latin alternatives ("fee", "charge", "duty") are bare substrings
+  // with no \b, so "fee" matched inside "feedback". Fixed by dropping the
+  // Latin duplicates from that rule's local payment check (they're already
+  // word-bounded on the line above) and keeping only the Devanagari terms,
+  // which were never the substring risk.
+  ["mailing-list reply about a build failure, not a delivery",
+   "RE: [ILUG] Newby to Linux looking for information on cvs\nHello all,\nFirstly I'd like to thank all of you for the fast and very helpful feedback\nthat I got to my question today. I have one more question though. I\ndownloaded the w3 and url files from the server at the first try thanks to\nthe help that I received today. Then though I tried to build them. I\nstarted by trying the w3 program. I used the following lines which produced\nsome strange results. Would any one be able to set me straight?\n\n./configure --with-emacs --prefix=/usr/local/src/beta/w3 --exec-prefix=/usr/\nlocal/src/beta/w3 --with-url=/url/url\nThat worked fine so I moved to the next step.\nmake\nAt the bottem of the text I got the following messages:\nCannot open load file: /url/url/url-vars.el\nmake[1]: *** [custom-load.el] Error 255\nmake[1]: Leaving directory `/usr/local/src/beta/w3/lisp'\nmake: *** [w3] Error 2\n\nWhen I got around to trying the url package I had no problems. In saying\nthat this doesn't necessarily mean that I was doing it right so below are\nthe commands I used.\n./configure --with-emacs --prefix=/url/url --exec-prefix=/url/url\nfollowed by the commands make and make install.\nThere is no text files which conta"],
 ];
 
 for (const [name, text] of LEGIT) {
@@ -1383,6 +1402,45 @@ check(
   "an *account* expiring still counts as manufactured urgency",
   accountExpiry.reasons.some((r) => r.id === "artificial_urgency"),
   `fired: ${accountExpiry.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+// "urgently" modifying "needed" is a reporter's judgment about a shortage,
+// not a countdown aimed at the reader — ambient false positive from a 2002
+// news-aggregator mailing list ("larger studies are urgently needed").
+const urgentlyNeeded = await analyzeLocal(
+  "Researchers say fresh clinical trial data is urgently needed before regulators can approve a wider rollout of the vaccine."
+);
+check(
+  "news calling for data that is urgently needed is not manufactured urgency",
+  urgentlyNeeded.verdict === VERDICT.SAFE &&
+    !urgentlyNeeded.reasons.some((r) => r.id === "artificial_urgency"),
+  `scored ${urgentlyNeeded.score}, fired: ${urgentlyNeeded.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+// "X should immediately Y" is a recommendation about a third party's future
+// action, not a directive at the reader — ambient false positive from a BBC
+// click-through ("the government should immediately announce...").
+const shouldImmediately = await analyzeLocal(
+  "Op-ed: the city council should immediately expand recycling collection to every neighborhood, community groups argue."
+);
+check(
+  "a third party being told what it should immediately do is not manufactured urgency",
+  shouldImmediately.verdict === VERDICT.SAFE &&
+    !shouldImmediately.reasons.some((r) => r.id === "artificial_urgency"),
+  `scored ${shouldImmediately.score}, fired: ${shouldImmediately.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+// A URL is an address, not prose — "urgent" inside a link's hostname is not
+// the reader being rushed. Ambient false positive from a mailing-list
+// signature linking a Belgian radio station, http://urgent.rug.ac.be/.
+const urgentInUrl = await analyzeLocal(
+  "This week's newsletter archive is up: http://urgent-updates.example.com/archive/12 has the full roundup."
+);
+check(
+  "the word urgent appearing only inside a URL is not manufactured urgency",
+  urgentInUrl.verdict === VERDICT.SAFE &&
+    !urgentInUrl.reasons.some((r) => r.id === "artificial_urgency"),
+  `scored ${urgentInUrl.score}, fired: ${urgentInUrl.reasons.map((r) => r.id).join(", ") || "none"}`
 );
 
 // Police verification is a step in getting a passport, not a threat.
