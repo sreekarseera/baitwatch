@@ -224,6 +224,152 @@ const GIFT_CARD_PAYMENT_RE = new RegExp(
     `|(?:${GIFT_CARD_RE.source})[^.!?]{0,60}${GIFT_CARD_ASK_RE.source}`
 );
 
+// ---------------------------------------------------------------------------
+// The ask.
+//
+// Every rule in this file describes a tactic, but the thing that makes any of
+// them a *scam* rather than a topic is that the reader is being asked to do
+// something. This is the one pattern that names that directly, and it is used
+// twice: as the `no_action_requested` discount below, and — via the `noAsk`
+// flag this module returns — as the hard cap that engine.js applies. The cap is
+// the reason this list has to be right: an ask verb missing from it is a scam
+// silently downgraded to safe, not merely a scam scored a little low.
+//
+// It is deliberately over-inclusive. The rule is inverted, so a verb that is
+// here but should not be costs precision (a message that asks for nothing is
+// read as asking, and keeps its score); a verb that is missing costs *recall*
+// (a real ask reads as no ask at all). Between those two, the second is the one
+// that hurts people, so borderline verbs are in.
+//
+// Audited against the ask verbs that actually appear in the scam rows of
+// curated.csv and curated-hinglish.csv — the additions and the row that
+// motivated each are recorded below. The recurring shape is that the presence-
+// based rules above already knew the verb and this list did not: `provide`,
+// `submit`, `enter` and `update` are all in CREDENTIAL_ENTRY_RE; `buy`,
+// `purchase`, `redeem` and `pay` are all in GIFT_CARD_ASK_RE; `accept`,
+// `approve` and `scan` are all in upi_collect_request; `re-register` is in
+// payment_detail_change; `reschedul` is in delivery_redispatch_fee. That is the
+// drift the comment on `no_action_requested` warns about, and it had happened
+// again — in English this time, not only in Devanagari.
+//
+// Word-form traps this list had been bitten by, all of them the same bug in
+// different clothes: `\bshare\b` does not match "sharing", `\bpay\b` does not
+// match "paying", `reschedul\b` can never match "reschedule" (there is no word
+// boundary between "l" and "e" — see the same note in
+// delivery_redispatch_fee), and `update\s*your` does not match "update kijiye"
+// (resolved by the Hinglish imperative, not by widening the English verb).
+// Prefer a stem plus a suffix list over an exact word wherever the stem is
+// unambiguous — but enumerate the suffixes rather than reaching for `\w*`,
+// which is how `bhar\w*` came to match "Bharat" and `press` came to match
+// "PRESS RELEASE". Four branches were tried and removed on measurement for
+// exactly that: `press`, bare `update`, `sign up` and Devanagari `दर्ज`, each
+// noted at its position below.
+const ACTION_REQUEST_RE = new RegExp(
+  "\\b(?:" +
+    // Follow a link, or open what was attached.
+    "click|tap|visit|open\\s+(?:the|this|your|it)|" +
+    // Authenticate somewhere.
+    // `sign up` was tried alongside `sign in` and removed: it matched an EFF
+    // newsletter's own subscribe footer, cost that row its discount, and saved
+    // no curated row. Signing up for something is not the shape of ask this
+    // rule is about.
+    "log\\s*in|login|sign\\s*in|re-?register|register|re-?activate|activate|" +
+    // Type something in, or hand it over. `provide` — "Provide your account
+    // for disbursement" (charity-grant row); `submit`/`enter`/`upload` are
+    // CREDENTIAL_ENTRY_RE's own verbs. `verif\w*` rather than `verify`, so
+    // "verifying" counts.
+    //
+    // `update` stays gated on `your`, as it always was. A bare `update` was
+    // tried — the Hinglish "Turant update kijiye" is the row that wants it —
+    // and it cost a ZDNet AnchorDesk newsletter its discount on the ordinary
+    // noun ("product updates") while saving nothing the Hinglish imperative
+    // `kijiye` below does not already save. The ask in that row is "kijiye".
+    "enter|submit|upload|fill\\s*(?:in|out|up)?|provide|verif\\w*|confirm|update\\s*your|" +
+    // Transmit it. `sharing` — "Redeem now by sharing the confirmation code"
+    // (reward-points row) was invisible to `\bshare\b`, which does not match
+    // the gerund. It carries a determiner for exactly the reason
+    // CREDENTIAL_TRANSMIT_RE's own `shar(?:e|ing)\s+(?:your|the|it|with)` does:
+    // ungated, it matches the compound noun in "music sharing" and "file
+    // sharing", and it cost an EFF newsletter its discount that way. The
+    // third-person `shares` is deliberately absent too — it is never an
+    // imperative, and its only corpus hit was "a client who shares your
+    // surname". Bare `share` is left as it was, ungated, to avoid narrowing a
+    // branch that has been in this list from the start.
+    // `give` is gated on an indirect object for the same reason: "give us
+    // remote access" (fake-ISP row) is an ask, "gives you access to your
+    // statements" is not.
+    "send|sending|forward|share|sharing\\s+(?:your|the|it|this|with|my)|transfer|remit|" +
+    "give\\s+(?:us|me|it|them)|" +
+    // Answer on the channel they chose. "Kindly respond with your details"
+    // (widow-inheritance row) — the list knew `reply with` and not `respond`.
+    "(?:reply|respond|revert)\\s*(?:to|with|back)|" +
+    // Pay. `pay(?:ing|ment)?` — "Join by paying a one time membership"
+    // (YouTube-likes job row) was invisible to `\bpay\b`. `settle` — "Settle
+    // the 15 rupee customs charge" (India Post row). `deposit` — "Deposit a
+    // refundable security fee" and "Start with a small deposit".
+    "pay(?:ing|ments?)?|settle|deposit|purchase|buy|recharge|" +
+    // Collect the lure. `claim` — "An inheritance of 2.8 million USD awaits
+    // your claim" (barrister row). `redeem`, `accept`, `approve` and `scan`
+    // are GIFT_CARD_ASK_RE's and upi_collect_request's own verbs. `receive` —
+    // "need a trusted partner to receive 10 million dollars" (army-officer
+    // row), where being the recipient is the entire thing being asked for.
+    "claim|redeem|collect|accept|approve|scan|receive|" +
+    // Install it.
+    "download|install|" +
+    // Ring the number in the message. `dial` — "dial our recovery cell
+    // number" (POS-debit row).
+    //
+    // `press` was tried here, as the English twin of the IVR ask in "e-KYC के
+    // लिए 9 दबाएं", and removed after measuring. It matched "PRESS RELEASE" in
+    // a 2002 Ayn Rand Institute mailing-list post, which is a noun and not an
+    // instruction, and that single word was the only thing keeping the post out
+    // of the cap — it scored 62 with it and 34 without. Gating it on the key to
+    // be pressed is not available either: normalize() folds digits onto letters,
+    // so "press 9" arrives as "press o" (see the note in family_emergency about
+    // never matching \d in this layer). No curated row needs the English word;
+    // the Devanagari दबाएं below covers the one row that motivated it.
+    "call|dial|contact\\s+(?:us|me)|whatsapp\\s+(?:us|me)|" +
+    // Arrange the delivery again. `reschedul\w*` — "Reschedule here" was the
+    // whole ask of the Amazon parcel row and matched nothing.
+    "reschedul\\w*" +
+    ")\\b" +
+    // Hinglish and Devanagari. Latin and Devanagari alternatives stay outside
+    // the \b group above: JS's \b is an ASCII word boundary and can never
+    // match against a Devanagari character — see the note on HI.urgentLatin.
+    `|${HI.send}|${HI.tell}|${HI.enter}` +
+    // The Hinglish imperative of "karna" (to do), which is how a Hinglish
+    // message asks for anything at all: "update kijiye", "release karwaiye",
+    // "form bhar kar bhejo". `kar(?:iye|ein|o)` covered three of maybe ten
+    // real spellings — "kijiye" and "karwaiye" both went unseen, and both are
+    // in curated-hinglish.csv. `kar` is never used bare (see the note at the
+    // top of HI): "sarkar", "Karnataka" and "karate" all start with it.
+    "|\\bkar(?:iye|iyega|ein|en|o|na|ke|wa\\w*)\\b|\\bkar\\s*d(?:o|ijiye|ein|en)\\b|\\bk(?:ee|i)jiy?e\\b" +
+    // "bhar" (fill/pay in) — the Devanagari भर was covered and its Latin
+    // transliteration was not, so "Clearance fee bharkar release karwaiye"
+    // read as asking for nothing. Enumerated rather than `bhar\w*`, which also
+    // swallows "Bharat" — a word that turns up constantly in exactly the Indian
+    // text this branch exists for, and would have quietly disabled the cap
+    // there. Same trap as कस्टम/कस्टमर and वारंट/वारंटी above.
+    "|\\bbhar(?:kar|ke|iye|iyega|o|na|en|ein)?\\b|\\bdaba(?:o|iye|ye|yen|ein)\\b" +
+    // The Devanagari imperatives. "कीजिए" is as common as "करें" and was
+    // absent, which is what let "AnyDesk कोड शेयर कीजिए" score as a message
+    // with nothing to do in it.
+    "|कर(?:िए|िये|ें|ो|ना|वा|के)|कीजिए|कीजिये|किजिए|दीजिए|दीजिये" +
+    "|भर(?:ें|िए|िये|ना|कर|ो)|दबा(?:एं|एँ|कर|इए|ये|यें)" +
+    // Devanagari-spelled loanwords for the same acts. The Latin spellings of
+    // every one of these were already covered; a Hindi-script message that
+    // wrote them in Devanagari carried no ask signal at all.
+    "|क्लिक|कॉल|डायल|अपडेट|अपलोड|डाउनलोड|इंस्टॉल|स्कैन|लॉगिन|लॉग\\s*इन|साइन\\s*इन" +
+    // "दर्ज" (to register/file) was tried here and removed for the same reason
+    // as the English `press`: its overwhelmingly common form is the passive
+    // report "पुलिस ने मामला दर्ज किया है" ("police have filed a case"), which
+    // is a description of something that already happened, not an ask — and
+    // threat_of_consequence matches that exact phrase as a *threat*, so the two
+    // rules would have cancelled on every Hindi crime report. No curated row
+    // needs it.
+    "|वेरिफ|सत्यापित|भुगतान|पेमेंट|खरीद|रिडीम|क्लेम|रजिस्टर|एक्सेप्ट|स्वीकार|संपर्क|खोल"
+);
+
 /**
  * Each rule is {id, weight, why, test}. `why` is written to be shown to a
  * non-technical user verbatim, so it explains the *risk*, not the regex.
@@ -751,12 +897,12 @@ const EXONERATING_RULES = [
     // scam saying "फॉर्म तुरंत भरें" or "नेट बैंकिंग लॉगिन करें" read as
     // asking for nothing and collected the discount. Four of the ten remaining
     // Devanagari misses were being helped over the line by this rule.
-    test: (t) =>
-      !new RegExp(
-        "\\b(?:click|tap|verify|confirm|login|log\\s*in|sign\\s*in|pay|send|transfer|share|download|install|call|reply\\s*with|update\\s*your)\\b" +
-          `|${HI.send}|${HI.tell}|${HI.enter}|kar(?:iye|ein|o)\\b|कर(?:िए|ें|ो|ना|वा|के)|कॉल|क्लिक|अपडेट` +
-          "|भर(?:ें|िए|ना|कर|ो)|अपलोड|लॉगिन|वेरिफ|सत्यापित|भुगतान|दीजिए|दीजिये"
-      ).test(t),
+    //
+    // The verb list now lives at ACTION_REQUEST_RE above, because the same
+    // question — does this text ask the reader to do anything — is also what
+    // engine.js's cap turns on, and two copies of it would drift apart exactly
+    // the way this rule has drifted from the presence-based rules twice.
+    test: (t) => !ACTION_REQUEST_RE.test(t),
   },
   {
     id: "internal_scheduling",
@@ -772,7 +918,12 @@ const EXONERATING_RULES = [
  * @param {{hasCredentialForm?: boolean}} [context] What the text is. A page
  *   carrying an actual login form is read differently from a message that
  *   merely talks about one.
- * @returns {{score: number, signals: Array<{id, weight, detail}>, exonerating: Array}}
+ * @returns {{score: number, signals: Array<{id, weight, detail}>, exonerating: Array,
+ *   noAsk: boolean}} `noAsk` is true when the text names no action for the
+ *   reader to take — see ACTION_REQUEST_RE. Reported rather than scored,
+ *   because what it is worth depends on things this module cannot see (whether
+ *   the message carries a link, whether a conclusive rule fired anywhere in the
+ *   stack). engine.js decides; this module only establishes the fact.
  */
 export function analyzeHeuristics(rawText, context = {}) {
   // Drop the separators *inside* a number before normalizing. Almost every
@@ -820,11 +971,27 @@ export function analyzeHeuristics(rawText, context = {}) {
     }
   }
 
+  // Deliberately computed *outside* the hasSevere gate above, unlike the −0.8
+  // discount that reads the same regex.
+  //
+  // The two need different bars and would be wrong sharing one. The discount is
+  // a nudge, so it is right to withhold it the moment anything severe fires:
+  // "as discussed, send me your OTP" should not be talked down. The cap
+  // engine.js builds on this flag is a statement about the *evidence* — text
+  // that names no action and carries no link has not shown an act, only a topic
+  // — and the rules that sit between the two bars (advance_fee and
+  // delivery_redispatch_fee at 2.0, secrecy_request at 2.1, credential_request,
+  // job_advance_fee, investment_scam and windfall_solicitation at 2.2) are
+  // exactly the topic-shaped ones the cap exists to hold back. Computing this
+  // inside the gate would have switched the cap off for every one of them,
+  // which is the opposite of the intent.
+  const noAsk = !ACTION_REQUEST_RE.test(t);
+
   const score =
     signals.reduce((sum, s) => sum + s.weight, 0) +
     exonerating.reduce((sum, s) => sum + s.weight, 0);
 
-  return { score: Math.max(0, score), signals, exonerating };
+  return { score: Math.max(0, score), signals, exonerating, noAsk };
 }
 
 export const RULE_COUNT = RULES.length;

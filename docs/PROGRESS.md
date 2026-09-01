@@ -13,13 +13,13 @@ Last updated **2026-09-01**.
 | Archive | `github.com/sreekarseera/baitwatch-archive` (private, the original 32-commit history) |
 | Detection | 24 heuristics + URL analysis + brand impersonation + on-device classifier |
 | Model | 3,603 rows, 94.31% validation, 93.81% ±0.88% five-fold CV, 6,000 terms, 263.9 KB |
-| Tests | 284 engine checks, model parity (tokens + predictions), 5 accuracy gates, 3 held-out gates, 29 adapter checks, 20 browser checks |
+| Tests | 309 engine checks, model parity (tokens + predictions), 5 accuracy gates, 3 held-out gates, 29 adapter checks, 20 browser checks |
 
 Measured accuracy, from `node tests/test_benchmark.mjs`:
 
 | | rate |
 |---|---|
-| legitimate mail flagged | 0.93% |
+| legitimate mail flagged | 0.82% |
 | …called *dangerous* | 0.16% |
 | targeted scams missed | 0.00% |
 | Hinglish/Hindi scams missed | 0.00% |
@@ -41,6 +41,85 @@ validation accuracy went *down* on 2026-08-17 (second entry), from 94.94% to
 94.31%, and that was the point: the corpus it is measured against had no
 modern transactional mail in it at all, so the old number was partly scoring a
 blind spot. Read that entry before trying to win the 0.63 points back.
+
+## 2026-09-01 (the no-ask cap)
+
+**Promoted `no_action_requested` from a −0.8 nudge to a hard cap, and the
+interesting half turned out to be the audit rather than the cap.** The entry
+below proposed this and measured it at +5 false positives removed for 1 curated
+scam lost. Both numbers were artefacts of the verb list being incomplete: the
+list was missing so many ask verbs that it read *17* curated scams as asking for
+nothing, and it read enough legitimate mail the same way to look like a bigger
+precision win than it is.
+
+**The rule now caps rather than discounts.** Text that names no action for the
+reader and carries no link cannot push its *rule* contribution past
+SUSPICIOUS_AT, unless a rule at or above `CONCLUSIVE_AT` (2.4) fired —
+`gift_card_payment` 3.0, `upi_collect_request` 2.6, `payment_detail_change` 2.5,
+`crypto_transfer` 2.4, `family_emergency` 2.4, plus `lookalike_domain` 3.0,
+`brand_impersonation` 2.6, `userinfo_url` 2.4 and `urlhaus_match` 4.0 from the
+other layers. Those three are academic: each needs a URL to exist, and the cap
+already does not apply where there is one.
+
+The bar is deliberately above the 2.0 that `analyzeHeuristics` uses to withhold
+its exonerating discount, and the gap is the design. 2.0–2.3 is where the
+topic-shaped heavy rules sit — `investment_scam`, `windfall_solicitation`,
+`credential_request`, `advance_fee` — and those are exactly what the cap is for.
+So `noAsk` is computed *outside* the `hasSevere` gate; computing it inside would
+have switched the cap off for every rule it was meant to hold back.
+
+**Not a corroboration requirement.** One rule still convicts alone, and the
+regression set now pins that: a single `crypto_transfer` on text with no ask and
+no link still scores 100. No count of signals appears in the condition.
+
+**The cap binds the rule score, not the final score, and that was measured
+rather than assumed.** Capping the final score scores identically on false
+positives (15/1834 either way) and costs 29 corpus scams the model was catching
+alone — three of them classic advance-fee letters, which the corpus stores
+truncated at 1,200 characters, so the request really has been cut off and "names
+no action" is a true statement about the text. `MODEL_MAX_PULL` was raised to 50
+in a measured decision precisely so the model could warn on text that trips no
+rule; the model is not a rule, and silencing it here bought nothing.
+
+**The verb audit is where the recall came from.** Against every scam row in
+`curated.csv` and `curated-hinglish.csv`, 30 rows named an action the list could
+not see, 17 of them convicted by nothing else. The recurring shape is the one
+this file has now written down three times: *the presence-based rules already
+knew the verb and the absence-based rule did not.* `provide`, `submit`, `enter`
+are in `CREDENTIAL_ENTRY_RE`; `buy`, `redeem`, `pay` in `GIFT_CARD_ASK_RE`;
+`accept`, `approve`, `scan` in `upi_collect_request`; `reschedul` in
+`delivery_redispatch_fee`. Plus the word-form bugs: `\bshare\b` never matched
+"sharing", `\bpay\b` never matched "paying", and `reschedul\b` can never match
+"reschedule" at all. On the Hinglish side `kar(?:iye|ein|o)` covered three of
+about ten real spellings of the imperative of *karna* — "kijiye" and "karwaiye"
+both went unseen, and both are in the corpus — and Latin "bhar" was missing
+while Devanagari भर was present.
+
+**Four candidate verbs were tried and removed on measurement**, which is the
+part worth keeping: `press` matched "PRESS RELEASE" in a 2002 mailing-list post
+and was the only thing keeping it out of the cap; bare `update` matched a
+newsletter's "product updates"; `sign up` matched an EFF subscribe footer;
+Devanagari `दर्ज` matched "पुलिस ने मामला दर्ज किया है", a filed case being
+*reported*, which `threat_of_consequence` reads as a threat — the two rules
+would have cancelled on every Hindi crime report. `sharing` needed a determiner
+or it matched "music sharing", and `bhar\w*` had to be enumerated or it
+swallowed "Bharat".
+
+**Result: corpus false positives 0.93% → 0.82% (17 → 15), 0 added; corpus false
+negatives 25.78% → 25.49%, 0 newly missed and 5 newly caught; targeted scams
+missed 0/345 unchanged; Hinglish/Hindi 0/200 unchanged; held-out 0/66 and
+0/16 unchanged.** Both directions improved, which is not the tradeoff the
+proposal below expected. 22 more regression fixtures (287 → 309), covering both
+directions: four topic-rule false positives that must now stay silent, eight
+Hinglish/Devanagari/English scams whose only ask is a verb the audit added, and
+the conclusive-rule exemption.
+
+**What this does not fix.** The two false positives it removes are 2002
+mailing-list posts, and the point of the entry below is that the corpus contains
+none of the text the extension actually reads. The cap is aimed at the LinkedIn
+feed post and the news article; there is still nothing in any test set that
+resembles those, so this remains a fix measured against data that cannot contain
+the failure it targets.
 
 ## 2026-09-01 (why the false positives keep coming back)
 
