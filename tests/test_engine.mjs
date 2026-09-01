@@ -70,6 +70,16 @@ const SCAMS = [
    "Credit card reward points worth 9,750 expiring today. Redeem now by sharing the confirmation code you receive on SMS."],
   ["guaranteed-return investment pitch, plural verb",
    "Dear investor, our advisory group guarantees 40 percent monthly returns on crypto. Start with a small deposit and withdraw anytime."],
+  // The other half of the three 2026-09-01 conversions: the same topics as the
+  // LEGIT rows below, but performing the act each rule is named for. The
+  // investment pitch never uses the word "guarantee", so it exercises the
+  // promised-yield branch that replaced the ungated conjunction.
+  ["investment pitch promising a fixed daily return, no \"guarantee\" in it",
+   "Join our trading group and earn a fixed daily profit of 3% on your capital. Minimum deposit to start is 10,000 rupees — send it to the UPI ID below and your account is activated today."],
+  ["support-desk impersonation naming no company agency",
+   "Hello, this is the security team. We are contacting you about unusual sign-in attempts. Reply with the verification code we just sent so we can lock the intruder out."],
+  ["debt threat aimed at the reader",
+   "FINAL NOTICE. Your outstanding balance remains unpaid. If you do not settle today, legal action will be initiated and a warrant issued against you. Pay here: secure-settle.co/pay"],
 ];
 
 for (const [name, text] of SCAMS) {
@@ -135,6 +145,29 @@ const LEGIT = [
    "Congratulations to the whole team on being shortlisted for the design award — the ceremony is on the 14th and I hope everyone can make it."],
   ["hindi congratulation on an exam result",
    "बधाई हो! आपने बोर्ड परीक्षा में बहुत अच्छे अंक प्राप्त किए हैं। आपके उज्ज्वल भविष्य की शुभकामनाएं।"],
+  // The three topic-shaped rules converted on 2026-09-01. Each of these
+  // discusses the rule's topic at length and asks the reader for nothing, which
+  // is the distinction the old bare alternations could not draw — they warned
+  // on 57 of the 1,834 legitimate corpus rows between them. See
+  // docs/PROGRESS.md.
+  //
+  // investment_scam used to be (invest|stock|scheme|ipo) anywhere AND
+  // (money|profit|return|scheme) anywhere, ungated, so any financial writing
+  // tripped it. Now it wants a *promised* yield next to the instrument.
+  ["financial newsletter discussing stocks and returns with nothing on offer",
+   "Market Notes, week 14. The fund's portfolio returned 4.1% over the quarter, trailing the index by roughly 60 basis points. We continue to invest in mid-cap industrials, and the IPO window looks likely to reopen in the second half. As always, past performance is no guide to future returns and every investment carries risk. Reply to this note if you would like the full holdings table."],
+  // threat_of_consequence used to be a bare alternation of
+  // arrest|court|police|fine|jail, which is the ordinary vocabulary of news.
+  // Now the consequence has to be aimed at the reader.
+  ["news report of an arrest, addressed to nobody",
+   "Six arrested for attacking Palio jockey. Police in Siena said the six men, all aged between 19 and 34, will appear in court next month on charges of assault. A lawyer for the accused said his clients deny any wrongdoing, and a fine of up to 3,000 euros is possible if they are convicted."],
+  ["mailing-list thread about legal action someone else is taking",
+   "Re: Defending Unliked Speech. Robert writes: here's hoping the tradition perseveres for the novelist currently on trial in Paris. The suit was filed by four Islamic organisations and a human rights group, and the prosecution has asked for a suspended sentence rather than jail."],
+  // impersonated_authority used to include a bare federal|government, so any
+  // political thread tripped it. Now the message has to claim to *be* the
+  // authority.
+  ["political mailing-list thread about government policy",
+   "Re: the broadband bill. The government's own regulator admits the rollout targets were never realistic, and the federal subsidy programme has been reannounced three times. Worth reading the committee transcript before Thursday's call — I'll circulate the link."],
 ];
 
 for (const [name, text] of LEGIT) {

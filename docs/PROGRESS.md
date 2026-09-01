@@ -13,13 +13,13 @@ Last updated **2026-09-01**.
 | Archive | `github.com/sreekarseera/baitwatch-archive` (private, the original 32-commit history) |
 | Detection | 24 heuristics + URL analysis + brand impersonation + on-device classifier |
 | Model | 3,603 rows, 94.31% validation, 93.81% ±0.88% five-fold CV, 6,000 terms, 263.9 KB |
-| Tests | 284 engine checks, model parity (tokens + predictions), 5 accuracy gates, 3 held-out gates, 29 adapter checks, 20 browser checks |
+| Tests | 297 engine checks, model parity (tokens + predictions), 5 accuracy gates, 3 held-out gates, 29 adapter checks, 20 browser checks |
 
 Measured accuracy, from `node tests/test_benchmark.mjs`:
 
 | | rate |
 |---|---|
-| legitimate mail flagged | 0.93% |
+| legitimate mail flagged | 0.55% |
 | …called *dangerous* | 0.16% |
 | targeted scams missed | 0.00% |
 | Hinglish/Hindi scams missed | 0.00% |
@@ -41,6 +41,130 @@ validation accuracy went *down* on 2026-08-17 (second entry), from 94.94% to
 94.31%, and that was the point: the corpus it is measured against had no
 modern transactional mail in it at all, so the old number was partly scoring a
 blind spot. Read that entry before trying to win the 0.63 points back.
+
+## 2026-09-01 (the three worst topic-rules, converted)
+
+**Acting on the diagnosis in the entry below: the three rules at the top of its
+solo-conviction table are now act-shaped.** No new rule, no new category, no
+two-signal requirement — each of the three keeps its tactic, its weight and its
+`why`, and gains the structure it was missing.
+
+Solo convictions on the 1,834 legitimate corpus rows (one rule fired, nothing
+corroborated it, the user got a banner):
+
+| rule | solo-warns | fires at all |
+|---|---|---|
+| `investment_scam` | 10 → **0** | 12 → **0** |
+| `impersonated_authority` | 8 → **0** | 75 → **3** |
+| `threat_of_consequence` | 7 → **0** | 66 → **1** |
+| all rules, total | 34 → **13** | |
+
+**The solo metric was hiding most of the damage, and the real number is worse
+than the table above.** `impersonated_authority` included `HI.police`
+wholesale, and `threat_of_consequence` matched the same word from its own
+alternation, so a news report of an arrest tripped *both* — `signals.length`
+was 2, and the row vanished from a metric that only counts rules firing alone.
+Two topic-rules reading one noun corroborate each other. Counted properly:
+
+| legitimate rows … | before | after |
+|---|---|---|
+| where any of the three fires | 118 | **4** |
+| where two or more fire together | 34 | **0** |
+| **warned, with no rule outside the three firing** | **57** | **0** |
+
+Corpus false positives 0.93% → **0.55%**, dangerous unchanged at 0.16%,
+targeted scams missed 0/345, Hinglish/Hindi 0/200, held-out 0/66 and 0/16.
+**Zero curated scams lost** — all 345 still convict, and the heuristic layer
+alone still flags the same 320 of them it did before.
+
+**`investment_scam` — the instrument is the topic, the promised yield is the
+act.** Its last branch was the rule's original design: `(invest|trading|stock|
+share|mutual fund|scheme|ipo)` anywhere in the message AND `(money|profit|
+return|scheme)` anywhere else in it, ungated. That conjunction produced 10 of
+the rule's 12 fires and every one of its solo warnings — Python threads where
+the "scheme" is a naming scheme and the "return" is a return value, a NYTimes
+piece on a firm that "does invest in promising new companies", a press release
+headlined "GOVERNMENT REGULATION IS KILLING THE STOCK MARKET". A fund reports
+what it returned; it never offers you a fixed or daily one. So a qualifier
+(`fixed|daily|monthly|guaranteed|assured|double|multibagger`) must sit within
+25 characters of a yield noun, either order, and the instrument must sit in the
+same sentence as that promise. The instrument gate is not decoration: without
+it, "the accessor returns a fixed-size buffer" satisfies the promise half on
+its own, on a corpus where the other half of the rule is the word Scheme.
+Two curated Devanagari rows leaned on the old conjunction and are carried by
+the new one — "क्रिप्टो में इन्वेस्ट करें … फिक्स्ड रिटर्न" and, because the
+promise pattern runs in both directions where the old Devanagari branch ran in
+one, "IPO प्री-लिस्टिंग एलॉटमेंट गारंटी".
+
+**`impersonated_authority` — naming an authority is not the tactic; claiming to
+be one is.** `federal` appears in 9 of the legitimate rows and `government` in
+36, and all eight solo warnings came from those two words. The named agencies
+(`irs`, `hmrc`, `trai`, `rbi`, `income tax`, `cyber cell`, and the named
+support desks) stay ungated — they appear once or not at all, and nothing
+routinely writes to you about HMRC. The generic nouns now need a claim of
+being the sender within 30 characters *before* them: "Hi, this is Instagram
+security team". One-directional on purpose — a bidirectional window reads "a
+confiscatory government boondoggle, expropriated from the original owners" as a
+claim, on the "from" that follows it. `security team`, `fraud department` and
+`tech support` appear in none of the false positives and are gated anyway,
+because a 2002 mailing-list corpus cannot contain the modern security notice
+that would prove them wrong; that blind spot is the subject of the entry below.
+
+**`threat_of_consequence` — the threat has to land on the reader.** Its nouns
+are the ordinary vocabulary of news: `fine` in 20 legitimate rows, `court` in
+13, `police` in 10, `arrest` in 9, and the seven solo warnings are "A-level
+student sues for £100,000", "Two in court on IRA spy charges", "Freedom deal
+for Real IRA man … two more years in jail", and "Another fine mess I've got
+myself into", where *fine* is an adjective. The consequence now has to share a
+sentence with a frame that puts it on you — something to avoid or face, issued
+against you or in your name, or following if you do not pay. Bare "you" is
+deliberately not such a frame: one of the false positives puts it 22 characters
+from "court" ("I'd have had them in the small claims court quicker than you
+could drop LOTR on your foot"). "Take legal action" is likewise absent while
+"will be taken" is present, because the news row reports someone else taking
+it. `challan` is the one term left ungated, and it is the eight-row exception
+that justifies the rest: the e-challan family is a payment link rather than a
+threat, satisfies no frame at all, appears in zero legitimate rows, and — unlike
+"fine" — is never anything but a penalty.
+
+**`HI.police` is split, and two of its Latin entries were outright bugs.** One
+alternation was serving both rules, which is part of why both were
+topic-shaped: a message claiming to be the police and a message threatening
+police action are different tactics. It is now `policeLatin` and
+`policeDevanagari`, split on false-positive risk rather than on `\b` (the axis
+`urgentLatin`/`urgentDevanagari` is split on). The Devanagari half is ungated
+in both rules — every term is an Indian agency name, none appears in any
+legitimate row, and each is already the act. The Latin half is gated in both,
+and lost two entries to the bare-substring bug that `वारंट(?!ी)` and
+`कस्टम(?!र)` already document: `warrant` had no word boundary and matched
+inside **warranty**, so a genuine "your laptop warranty claim" fired the threat
+rule; `\bed\b`, meant to be the Enforcement Directorate, matched the name
+**Ed** in 16 of the 1,834 legitimate rows, the largest single contributor to
+`impersonated_authority`'s 75 fires. It now needs the agency context a real
+message gives it ("ED officer bol raha hoon").
+
+**Corpus-wide false negatives went 25.78% → 29.34%, and that is the expected
+shape of this change rather than a regression to win back.** The 135 rows are
+2002 commercial spam — extended auto warranties (the `warranty` bug, firing a
+*criminal threat* rule on a car warranty ad), inkjet cartridges, e-book
+publishing software, "LazyTraders: $449,000 on Wednesday". Not one of them
+contains phishing vocabulary; measured, zero of the 135 mention a password, an
+OTP, a suspended account or a credential of any kind. They were being caught
+because they discuss money and the law, which is exactly the reading this
+change removes, and they are the class the tool deliberately does not warn
+about (see the 2026-08-17 entry).
+
+**Four new regression fixtures on the LEGIT side and three on the SCAM side**
+(284 → 297 checks): a financial newsletter reporting quarterly returns, a news
+report of an arrest, a mailing-list thread about someone else's lawsuit, a
+political thread about government policy — and, so the conversions cannot be
+satisfied by simply switching the rules off, an investment pitch promising a
+fixed daily return without ever saying "guarantee", a support-desk impersonation
+naming no company, and a debt threat aimed at the reader.
+
+`python3 tests/run_all.py` passes every suite. The browser smoke test skips —
+branded Chrome 137+ refuses `--load-extension` and Chrome for Testing is not
+installed here — so that layer is unverified rather than passing.
 
 ## 2026-09-01 (why the false positives keep coming back)
 

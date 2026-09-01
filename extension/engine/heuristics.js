@@ -94,9 +94,33 @@ const HI = {
   // approval notice fire both threat_of_consequence and impersonated_authority.
   // Excluded by what follows the word rather than by dropping the word, the
   // same shape as वारंट(?!ी) and कस्टम(?!र) below.
-  police:
-    "cyber\\s*cell|साइबर\\s*सेल|cbi|सीबीआई|police(?!\\s*(?:verification|clearance))|पुलिस(?!\\s*(?:सत्यापन|वेरिफिकेशन|क्लीयरेंस))|warrant|वारंट(?!ी)|giraftar|गिरफ़?्तार|थाना|थाने|" +
-    "\\bed\\b|ईडी|फेमा|supreme\\s*court|सुप्रीम\\s*कोर्ट|money\\s*laundering|मनी\\s*लॉन्ड्रिंग|दूरसंचार",
+  //
+  // Split Latin/Devanagari on a different axis from urgentLatin/urgentDevanagari
+  // above — not because \b cannot see Devanagari, but because the two halves
+  // carry completely different false-positive risk and the callers need to gate
+  // them differently. Every Latin alternative here is also an ordinary English
+  // word or abbreviation: measured across the 1,834 legitimate rows of
+  // dataset.csv, "police" appears in 10 and "supreme court" in 3, while the
+  // Devanagari half appears in none. Both rules that use this list now hold the
+  // Latin half behind a gate and let the Devanagari half through.
+  //
+  // Two Latin entries were outright bugs, both the bare-substring shape that
+  // वारंट(?!ी) and कस्टम(?!र) already document:
+  //   * bare "warrant" matched inside "warranty". The English half of
+  //     threat_of_consequence writes \bwarrant\b and is safe; this one had no
+  //     boundary at all, so a genuine "your laptop warranty claim" fired the
+  //     threat rule on the word warranty.
+  //   * bare \bed\b was meant to be the Enforcement Directorate and matched the
+  //     name Ed — 16 of the 1,834 legitimate rows, the largest single
+  //     contributor to impersonated_authority's 75 fires. A two-letter English
+  //     word cannot carry an agency on its own, so it now needs the agency
+  //     context an actual message gives it ("ED officer bol raha hoon").
+  policeLatin:
+    "cyber\\s*cell|cbi|police(?!\\s*(?:verification|clearance))|\\bwarrant(?!y)|giraftar|" +
+    "\\bed\\s*(?:officer|ऑफिसर|अधिकारी)|supreme\\s*court|money\\s*laundering",
+  policeDevanagari:
+    "साइबर\\s*सेल|सीबीआई|पुलिस(?!\\s*(?:सत्यापन|वेरिफिकेशन|क्लीयरेंस))|वारंट(?!ी)|गिरफ़?्तार|थाना|थाने|" +
+    "ईडी|फेमा|सुप्रीम\\s*कोर्ट|मनी\\s*लॉन्ड्रिंग|दूरसंचार",
   // "badhai"/"बधाई" is congratulation, not windfall — see CONGRATS_RE, which
   // holds it (and its English twin) behind a nearby-winnings gate. The terms
   // left here each name the winnings themselves.
@@ -201,6 +225,106 @@ const WINNINGS_RE =
 const CONGRATS_WINDFALL_RE = new RegExp(
   `(?:${CONGRATS_RE.source})[\\s\\S]{0,60}(?:${WINNINGS_RE.source})` +
     `|(?:${WINNINGS_RE.source})[\\s\\S]{0,60}(?:${CONGRATS_RE.source})`
+);
+
+// A legal consequence named anywhere used to be the whole of
+// threat_of_consequence, and the nouns it names are the ordinary vocabulary of
+// news reporting and of any thread that discusses the law. Counted across the
+// 1,834 legitimate rows of dataset.csv: "fine" appears in 20, "court" in 13,
+// "police" in 10, "arrest" in 9. Seven of those rows crossed the warning
+// threshold on this rule and nothing else — "A-level student sues for £100,000
+// over 'grade fixing'", "Two in court on IRA spy charges", "Freedom deal for
+// Real IRA man ... likely to serve less than two more years in jail", and
+// "Another fine mess I've got myself into", where "fine" is an adjective.
+//
+// The tactic named in the rule's `why` is a threat aimed *at the reader*, so
+// direction is the whole signal, exactly as it is in CREDENTIAL_TRANSMIT_RE:
+// "six arrested for attacking a jockey" and "you will be arrested" both contain
+// "arrested", and only the second is addressed to anyone. A threat has to name
+// a consequence and put it on you — something to avoid, something you will
+// face, something issued against you or in your name, something that follows if
+// you do not pay — so the frame and the consequence must sit in one sentence.
+const LEGAL_CONSEQUENCE_RE = String.raw`\b(?:arrest(?:ed|s)?|legal\s*action|lawsuit|court|police(?!\s*(?:verification|clearance))|fir|warrant|prosecut(?:e|ed|ion)|penalt(?:y|ies)|fine[sd]?|seiz(?:e|ed|ure)|deport(?:ed|ation)?|jail(?:ed)?|criminal\s*(?:case|charge))\b`;
+// Deliberately not "you" on its own. A legitimate thread reaches for the
+// second person freely — "I'd have had them in the small claims court quicker
+// than you could drop LOTR on your foot" puts "you" 22 characters from "court"
+// — so the pronoun has to be carrying a consequence ("you will be arrested"),
+// not merely present. Same reason "take legal action" is absent while "will be
+// taken" is there: the news row above reports someone else taking it.
+const THREAT_FRAME_RE = String.raw`\b(?:avoid|escape|face[sd]?|facing|liable|failure\s*to|non[\s-]?payment|otherwise|or\s*else|against\s*you|in\s*your\s*name)\b` +
+  String.raw`|\bif\s*you\s*(?:do\s*not|don't|fail|ignore)\b` +
+  String.raw`|\byou\s*(?:will|shall|may|could|can|would)\s*be\b` +
+  String.raw`|\b(?:will|shall)\s*be\s*(?:taken|initiated|issued|filed|registered|imposed|levied)\b` +
+  String.raw`|\bhas\s*been\s*(?:issued|filed|registered|imposed)\s*against\b`;
+const THREAT_AT_READER_RE = new RegExp(
+  `(?:${THREAT_FRAME_RE})[^.!?]{0,60}(?:${LEGAL_CONSEQUENCE_RE})` +
+    `|(?:${LEGAL_CONSEQUENCE_RE})[^.!?]{0,60}(?:${THREAT_FRAME_RE})`
+);
+
+// The generic half of impersonated_authority, behind a claim of being the
+// sender. "federal" and "government" are the two words that rule actually
+// convicts on: 9 and 36 of the 1,834 legitimate rows contain them, and eight of
+// those rows warned the user on this rule alone — "US use of lie detector tests
+// criticized … Government employees are routinely screened", "New P2P network
+// funded by US government", "Enron finance chief is handcuffed … Federal
+// prosecutors have filed charges". Naming an authority is not the tactic;
+// *claiming to be* one that is contacting you is.
+//
+// "security team", "fraud department" and "tech support" appear in none of
+// those rows and are gated anyway, because the corpus is 2002 mailing-list mail
+// and cannot contain the message that would prove them wrong — a modern
+// security notice says "our security team detected a new sign-in" as a matter
+// of routine. The 2026-09-01 log entry is about exactly this blind spot.
+//
+// The claim has to come *before* the authority, which is how self-identification
+// is actually worded ("Hi, this is Instagram security team"). A bidirectional
+// window would read "a confiscatory government boondoggle, expropriated from
+// the original owners" as a claim, on the "from" that follows it.
+const GENERIC_AUTHORITY_RE = String.raw`\b(?:federal|government|security\s*team|fraud\s*department|tech\s*support)\b`;
+const AUTHORITY_CLAIM_RE = String.raw`\b(?:this\s*is|it's|i\s*am|i'm|we\s*are|we're|calling\s*from|speaking\s*from|writing\s*(?:to\s*you\s*)?from|contacting\s*you\s*from|on\s*behalf\s*of|notice\s*from|message\s*from|alert\s*from|letter\s*from|email\s*from)\b`;
+const AUTHORITY_CLAIMED_RE = new RegExp(
+  `(?:${AUTHORITY_CLAIM_RE})[^.!?]{0,30}(?:${GENERIC_AUTHORITY_RE}|${HI.policeLatin})`
+);
+
+// investment_scam's last branch used to be an ungated conjunction: any of
+// (invest|trading|stock|share|mutual fund|scheme|ipo) anywhere in the message
+// AND any of (money|profit|return|scheme) anywhere else in it. That is the
+// rule's original design, and it is the single worst offender in the whole set
+// — 10 of its 12 fires across the 1,834 legitimate rows warned the user with no
+// other rule agreeing. Every one is a message about the topic and not an offer:
+// Python mailing-list threads where the "scheme" is a naming scheme and the
+// "return" is a return value, a NYTimes piece on a firm that "does invest in
+// promising new companies", a press release headlined "GOVERNMENT REGULATION IS
+// KILLING THE STOCK MARKET".
+//
+// Naming an instrument is a topic. *Promising a yield* on it is the act, and it
+// is one no legitimate sender performs: a fund reports what it returned, it
+// never offers you a fixed or daily one. So the qualifier has to sit beside the
+// yield noun (either order, one sentence, the CRYPTO_TRANSFER_RE shape), and
+// the instrument has to sit in the same sentence as that promise rather than
+// anywhere in the message. The instrument gate is what keeps "the accessor
+// returns a fixed-size buffer" out of a rule whose other half is the word
+// "scheme" — on this corpus, the language Scheme.
+//
+// Note [^।.!?] rather than [^.!?] in the windows: "।" is the Devanagari full
+// stop and leaving it out lets a window run past the end of a sentence, the
+// same fix the artificial_urgency stripper carries.
+const INVESTMENT_INSTRUMENT_RE = String.raw`\b(?:invest(?:ment|ing|or)?|trading|stocks?|shares?|mutual\s*funds?|scheme|ipo|forex)\b|इन्वेस्ट|ट्रेडिंग|म्यूचुअल\s*फंड|स्टॉक|आईपीओ|फॉरेक्स|स्कीम`;
+// "monthly" and "daily" qualify a yield the way no prospectus does; "fixed" and
+// "guaranteed" contradict what an investment is. The Devanagari terms are the
+// same words as loanwords, which is how real messages spell them.
+const YIELD_QUALIFIER_RE = String.raw`\b(?:guarantee[ds]?|assured|fixed|risk[\s-]?free|daily|weekly|monthly|double[ds]?|tripl(?:e|ed)|multibagger)\b|गारंटी\w*|एश्योर्ड|फिक्स्ड|डेली|डबल|मल्टीबैगर`;
+// "एलॉटमेंट" (allotment) belongs with the yields: an IPO pre-listing allotment
+// is the thing being promised in exactly the same grammar as a return, and the
+// curated row that carries it writes the pair in the other order
+// ("एलॉटमेंट गारंटी"), which the one-directional pattern this replaces missed.
+const YIELD_NOUN_RE = String.raw`\b(?:returns?|profits?|payouts?)\b|रिटर्न|प्रॉफिट|मुनाफ़?ा|एलॉटमेंट`;
+const PROMISED_YIELD_RE =
+  `(?:${YIELD_QUALIFIER_RE})[^।.!?]{0,25}(?:${YIELD_NOUN_RE})` +
+  `|(?:${YIELD_NOUN_RE})[^।.!?]{0,25}(?:${YIELD_QUALIFIER_RE})`;
+const INVESTMENT_PROMISE_RE = new RegExp(
+  `(?:${INVESTMENT_INSTRUMENT_RE})[^।.!?]{0,80}(?:${PROMISED_YIELD_RE})` +
+    `|(?:${PROMISED_YIELD_RE})[^।.!?]{0,80}(?:${INVESTMENT_INSTRUMENT_RE})`
 );
 
 // A gift card named anywhere used to be the whole rule, at the heaviest weight
@@ -382,10 +506,29 @@ const RULES = [
     weight: 1.7,
     why: "It threatens arrest, legal action, or a fine. Real agencies send written notices; they do not threaten you over email or chat.",
     test: (t) =>
-      // police(?!\s*(?:verification|clearance)) for the same reason as HI.police
-      // above — a passport's police verification step is not a threat.
-      /\b(?:arrest(?:ed)?|legal\s*action|lawsuit|court|police(?!\s*(?:verification|clearance))|fir\b|warrant|prosecut(?:e|ion)|penalt(?:y|ies)|fine|challan|seiz(?:e|ed|ure)|deport|jail|criminal\s*(?:case|charge))\b/.test(t) ||
-      new RegExp(`${HI.police}|मामला\\s*दर्ज|case\\s*darj|थाना|थाने|चालान|जमानत`).test(t),
+      // The consequence, pointed at the reader — see THREAT_AT_READER_RE.
+      // police(?!\s*(?:verification|clearance)) for the same reason as
+      // HI.policeDevanagari above: a passport's police verification is not a
+      // threat.
+      THREAT_AT_READER_RE.test(t) ||
+      // "challan" is the Indian traffic fine, and it is the one word here that
+      // needs no gate. It appears in none of the 1,834 legitimate rows, it is
+      // never anything but a penalty (unlike "fine", which is 20 of those rows
+      // and an adjective in most of them), and eight curated scams rest on it
+      // alone — the whole e-challan family, which is a payment link rather than
+      // a threat and so satisfies no frame in THREAT_FRAME_RE. "जमानत" (bail)
+      // and "मामला दर्ज" (case registered) are the same: a specific legal event
+      // named at the reader, with no English homograph to trip over.
+      /\bchallan\b|चालान|जमानत|मामला\s*दर्ज|case\s*darj/.test(t) ||
+      // The Devanagari half stays ungated. Every term in it is an Indian agency
+      // or a Devanagari legal noun, none of them appears in any legitimate row
+      // measured, and each one is already the act — a message from "साइबर सेल"
+      // about your "वारंट" is not a news report. The Latin half of the same
+      // vocabulary (HI.policeLatin) is deliberately *not* used here: "police",
+      // "supreme court" and "warrant" are the English words the gated branch
+      // above already owns, and letting them through a second time ungated
+      // would undo the gate.
+      new RegExp(HI.policeDevanagari).test(t),
   },
   {
     id: "prize_or_windfall",
@@ -445,8 +588,19 @@ const RULES = [
       // On the authority's own domain the claim is true, so there is nothing to
       // impersonate — see onOfficialDomain in engine.js.
       !ctx.onOfficialDomain &&
-      (/\b(?:income\s*tax|irs\b|hmrc|customs|cyber\s*cell|trai\b|rbi\b|federal|government|microsoft\s*support|apple\s*support|tech\s*support|security\s*team|fraud\s*department)\b/.test(t) ||
-        new RegExp(`${HI.police}|bank\\s*se\\s*bol|बैंक\\s*से\\s*बोल|hr\\s*se\\s*bol|कस्टम(?!र)|इनकम\\s*टैक्स|आयकर`).test(t)),
+      // A named agency or a named company's support desk is specific enough to
+      // be the act on its own: nothing routinely writes to you about HMRC or
+      // TRAI, and across the 1,834 legitimate rows "irs" and "customs" appear
+      // once each and the rest not at all. These stay ungated.
+      (/\b(?:income\s*tax|irs\b|hmrc|customs|cyber\s*cell|trai\b|rbi\b|microsoft\s*support|apple\s*support)\b/.test(t) ||
+        // The generic nouns — federal, government, security team, fraud
+        // department, tech support, and the Latin half of the police
+        // vocabulary — only count when the message claims to *be* them.
+        AUTHORITY_CLAIMED_RE.test(t) ||
+        // The Devanagari half needs no gate for the reason given on
+        // HI.policeDevanagari, and "se bol raha hoon" / "से बोल रहा हूं" is
+        // itself the claim this rule is named for, already in the right shape.
+        new RegExp(`${HI.policeDevanagari}|bank\\s*se\\s*bol|बैंक\\s*से\\s*बोल|hr\\s*se\\s*bol|कस्टम(?!र)|इनकम\\s*टैक्स|आयकर`).test(t)),
   },
   {
     id: "secrecy_request",
@@ -692,9 +846,10 @@ const RULES = [
       // digit to be recognisable, which matters because normalize() folds
       // digits onto letters ("40%" survives as letters, not as "40").
       /गारंटीड?\s*रिटर्न|एश्योर्ड\s*रिटर्न|पैसा\s*डबल|डेली\s*प्रॉफिट|मल्टीबैगर|गारंटी[^.!?]{0,20}(?:रिटर्न|प्रॉफिट|एलॉटमेंट)/.test(t) ||
-      ((/\b(?:invest(?:ment)?|trading|stock|share|mutual\s*fund|scheme|ipo)\b/.test(t) ||
-        /इन्वेस्ट|ट्रेडिंग|म्यूचुअल\s*फंड|स्टॉक\s*टिप्स|आईपीओ/.test(t)) &&
-        new RegExp(`${HI.money}|profit|return|scheme|स्कीम|vip\\s*ग्रुप|रिटर्न`).test(t)),
+      // The instrument in the same sentence as a promised yield — see
+      // INVESTMENT_PROMISE_RE, which replaces the ungated conjunction that used
+      // to close this rule.
+      INVESTMENT_PROMISE_RE.test(t),
   },
   {
     id: "windfall_solicitation",
