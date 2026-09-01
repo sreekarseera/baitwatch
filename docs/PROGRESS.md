@@ -42,6 +42,178 @@ validation accuracy went *down* on 2026-08-17 (second entry), from 94.94% to
 modern transactional mail in it at all, so the old number was partly scoring a
 blind spot. Read that entry before trying to win the 0.63 points back.
 
+## 2026-09-01 (cold audit)
+
+**Asked for an audit by agents with no session context, reading directly from
+git — because everything above this entry was produced and checked by the same
+session that wrote it.** Found and fixed one process bug before the audit could
+start: `d7c9bca` was titled "Merge B2: per-rule solo-fire gate" but had one
+parent and contained no B2 files — a `git stash` ran mid-merge and swallowed the
+staged files, and the following commit landed only an unrelated `PROGRESS.md`
+edit under the merge's message. Repaired by resetting past it, re-committing
+that edit honestly, and properly merging B2's real branch
+(`worktree-agent-a2dcd8eb7a7de7b5a` at `d008b3b`, tests-only, no conflicts).
+Re-measured the true merge point afterward — post-merge numbers for the two
+parallel branches (the no-ask cap below and the act-shaped rule rewrites)
+matched their individual pre-merge claims exactly, so the parallel work combined
+cleanly.
+
+Five independent auditors then read the merged tree (blind to this file and to
+commit messages) plus two more against the archive repo. One auditor
+(detection-logic) was seeded with a known bug it wasn't told about, as a
+calibration check — it found it independently before being stopped, so the
+audit's sensitivity is real, not assumed.
+
+**Confirmed, ranked by severity:**
+
+1. **`gift_card_payment`'s proximity gate has been dead since before today.**
+   `GIFT_CARD_ASK_RE.source` is spliced into the composed pattern unwrapped
+   (`heuristics.js:347-348`); its top-level `|` leaks out of the composition, so
+   the rule degenerates to "gift-card noun anywhere AND ask verb anywhere" with
+   no proximity check at all. At weight 3.0 it also bypasses today's no-ask cap.
+   `analyzeHeuristics("Thanks for the gift card! I will send you the photos from
+   the party later this week.")` fires it. Fixed below.
+
+2. **The no-ask cap's verb list cuts both ways.** A blind behavioral-delta pass
+   ran 117 constructed inputs through this HEAD and `ebe714f` and diffed every
+   verdict. The cap (see the entry below) correctly kills 10+ topic-only false
+   positives with no counterexamples of it hiding an actionable scam that had no
+   ask at all — but `ACTION_REQUEST_RE`'s verb list is both under- and
+   over-inclusive, and because it now gates both the cap *and* the older
+   no-action-requested score discount, one miss does double damage:
+   - Missing ordinary asks: *"please **tell** me the OTP you just received"*
+     (an unambiguous phishing message) dropped from dangerous (77) to suspicious
+     (36); *"**Join** our VIP Telegram group and **start trading** today"*
+     dropped from 81 to 58.
+   - Bare-matching idiom/passive collisions: `verif\w*` matches "has been
+     successfully **verif**ied" (passive, not an ask), pushing an ordinary
+     Income Tax refund-status notice from safe (16) to suspicious (37). Bare
+     "forward" matches "going **forward**", nearly tripling a benign note's
+     score (4 → 24, still safe but a real signal jump).
+   Fixed below.
+
+3. **No held-out scam data exists anywhere in the repo.**
+   `tests/holdout-legit.csv` and `holdout-pages.json` are genuinely clean of
+   training overlap (confirmed by grep), but both are legitimate-only. There is
+   no `tests/holdout-scams.csv` equivalent, so nothing measures miss-rate
+   against scam phrasing the model has never seen — every "scams missed" number
+   in this file, including the ones two sections below, is measured on curated
+   rows ~82% of which are literally in the model's own `X_train` split
+   (measured: 284/345). This is a data-collection gap, not a code bug — logged
+   under Next, not fixed today.
+
+4. **`extractUrls`/`extractEmails` in `extension/lib/text.js` are O(n²)** on
+   adversarial input — measured ~580ms / ~450ms at the 20,000-char page-text
+   cap, clean 4x-per-doubling growth confirming quadratic backtracking, not
+   exponential. Runs in the MV3 service worker on attacker-controlled page text
+   from a content script matching `<all_urls>`; realistic scam text measures
+   under 1ms, so this needs deliberately adversarial padding to trigger, not
+   ordinary content. Fixed below.
+
+5. **The model sees raw text; the rule engine sees confusable/leetspeak-folded
+   text.** `model.js`'s `classify()` tokenizes raw input; `heuristics.js`
+   normalizes first. An obfuscated brand/action word (`acc0unt`, Cyrillic
+   `раypal`) is invisible to the model's vocabulary while the same text still
+   matches heuristic keyword rules after folding — a reduction in the model's
+   contribution near the threshold for exactly the pretext-only messages it was
+   retrained to help with, not a guaranteed bypass since the rules still see it.
+   Fixed below (folds before the model tokenizes, same as the rules already do).
+
+**Checked and clean:** `all_frames: false` is a documented, deliberate tradeoff
+(`docs/STORE_LISTING.md` covers it; iframe content is instead reachable through
+the right-click "check this text" context menu) — not an oversight. Every
+declared permission has a real call site, none unused. The archive sweep
+confirmed the three former teammates' names (never committed as git identities,
+only as first names in file content) are absent from the public repo's commits,
+blobs, issues, PRs, and collaborator list. Nothing in the 32-commit V1 archive
+was worth porting — every candidate either already exists in V2's corpus/rules
+(often more richly) or was already fixed better in V2.
+
+## 2026-09-01 (closing the cold audit)
+
+Findings 1, 2 and 4 above are fixed and verified against the corpus; finding
+5 is fixed but revised from what the audit entry proposed, and finding 3 is
+left as logged (a data-collection gap, not a code bug).
+
+**1 — `gift_card_payment`'s dead proximity gate.** `GIFT_CARD_ASK_RE.source`
+and `GIFT_CARD_RE.source` are now wrapped in `(?:…)` where they're spliced
+into `GIFT_CARD_PAYMENT_RE`, so the top-level `|` inside each no longer
+leaks out of the composition. The finding-1 example
+(`analyzeHeuristics("Thanks for the gift card! I will send you the photos
+from the party later this week.")`) now scores 0 with no signal, was 3.0.
+
+**2 — the no-ask cap's verb list.** `verify\w*` is gated on a direct object
+(`verify\w*\s+(?:your|the|this|it|my)`) so it stops matching the passive "has
+been successfully verified"; `forward` is gated the same way `sharing` was
+(`forward(?:ing)?\s+(?:it|this|to|the|your|my)`) so it stops matching "going
+forward"; `tell\s+(?:me|us)` and `start\s+trading` were added to close the
+two missed-ask examples from the finding. `join` was deliberately **not**
+added — 30 legitimate corpus rows read "Join our free webinar" / "Join the
+Fun at EFF's VIP Party" in the identical shape to the missed scam's "Join our
+VIP Telegram group", so a `join` branch would reopen the exact topic-vs-act
+trap this whole audit exists to close; `start trading` is the narrower,
+unambiguous act in the same sentence and has zero corpus collisions.
+Re-measured: `tell me the OTP you just received` moves from 36 (the finding's
+reported broken value) back to 57 on heuristics alone; the finding's other
+three examples were spot-checked directly (`noAsk` now correctly `false` for
+each) rather than re-run through the full 117-input behavioral-delta pass.
+
+**4 — `extractUrls`/`extractEmails`.** Restructuring the domain pattern from
+`X*\.X` to `(?:X\.)+X` (so a loop iteration can't be reread as the required
+final segment) turned out to remove the *ambiguity* but not the *cost*:
+`.match()` retries the whole pattern at every failing start position, and an
+unbounded loop still does O(n) work at each one — still ~580ms/~430ms,
+unchanged. What actually fixes it is bounding the quantifiers, which is free:
+a DNS label is capped at 63 octets, a domain has no real reason to exceed 10
+labels, and RFC 5321 caps a local part at 64 octets. Bounded, both are
+~1–13ms at 20,000–40,000 characters and scale linearly, confirmed by doubling
+the input. Every URL/email extracted from the existing corpus is unchanged
+(spot-checked, not exhaustively diffed).
+
+**5 — model sees raw text, rules see folded text — revised.** The proposed
+fix ("fold before the model tokenizes, same as the rules already do") is
+wrong as literally stated. `normalize()`'s digit fold (`0`→`o`, `1`→`l`, …)
+exists so a heuristic rule can't be dodged by writing `8000` as `8ooo` — it
+was never validated against the model's vocabulary, which is frozen from
+training text that was never digit-folded. Folding digits before the model
+tokenizes turns real, weighted vocabulary terms (an amount, an OTP — `1500`
+is a term the model knows) into vocabulary the model has never seen (`lsoo`
+is not). Measured on the full corpus: corpus-wide false negatives rose from
+515/1769 to 525/1769 for no offsetting gain, because neither of the finding's
+two motivating examples (`acc0unt`, Cyrillic `раypal`) needs the digit fold —
+Cyrillic-confusable and styled/accented Latin are both handled by NFKD plus
+the confusables table alone.
+
+Fixed instead: `foldConfusables()` takes a `substituteDigits` option
+(default `true`, unchanged for every existing caller — the rules) and
+`model.js` calls it with `substituteDigits: false`. Re-measured: corpus
+numbers are back to exactly the pre-change baseline (515/1769 FN, 10/1834
+FP), and the model now treats `раypal`/`аccount` (Cyrillic homoglyphs)
+identically to plain `paypal`/`account` — spot-checked directly, not run
+through the full corpus, since neither example exists in the corpus as
+written. `acc0unt`-style digit leetspeak is a **known, deliberately unfixed**
+gap for the model specifically (the rules still catch it, via `normalize()`'s
+existing digit fold) — closing it would need the training pipeline itself to
+learn digit-folded terms, which is a retraining change, not a bug fix.
+
+This reopened `tests/test_parity.py`, which is the load-bearing gate for
+exactly this kind of divergence: it compares `classify()`'s predictions
+against `pipeline.predict_proba()` on **raw** text and now finds real,
+expected disagreement (up to Δ=0.23) on the EDGE_CASES that exercise
+accented/styled/CJK text, because one side folds and the other doesn't. The
+gate is doing its job — the fix is to make the Python side fold the same way
+before scoring, not to weaken the gate. That port (reusing
+`tools/build_confusables.py`'s table so the two sides can't drift) is
+sitting with a worktree agent; `tests/test_engine.mjs`,
+`tests/test_holdout.mjs` and `tests/test_benchmark.mjs` all pass at this
+commit — only `test_parity.py`'s prediction comparison is red, and only for
+the reason above.
+
+**Not done — finding 3.** No `tests/holdout-scams.csv` exists; every miss-rate
+number this file reports, including the ones above, is still measured on
+data ~82% of which the model trained on. Data-collection work, not a code
+fix — unchanged from the audit entry.
+
 ## 2026-09-01 (the no-ask cap)
 
 **Promoted `no_action_requested` from a −0.8 nudge to a hard cap, and the

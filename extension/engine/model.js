@@ -10,7 +10,7 @@
 // meaningless. tests/test_parity.py asserts that Python and JS agree on every
 // row of the training set; treat a parity failure as a broken build.
 
-import { tokenize } from "../lib/text.js";
+import { tokenize, normalize } from "../lib/text.js";
 
 let weightsPromise = null;
 
@@ -30,7 +30,10 @@ async function loadWeights() {
  * smooth_idf=True — the smoothing is already baked into the exported idf).
  */
 function vectorize(text, { vocabulary, idf, ngramMax }) {
-  const tokens = tokenize(text);
+  // Fold styled/accented Latin and Unicode-confusable letters onto the plain
+  // spelling the model's vocabulary was trained on (finding 5, 2026-09-01
+  // audit) — but not digits: see the note on foldConfusables' substituteDigits.
+  const tokens = tokenize(normalize(text, { substituteDigits: false }));
   const counts = new Map();
 
   for (let n = 1; n <= ngramMax; n++) {

@@ -344,8 +344,8 @@ const GIFT_CARD_RE =
 const GIFT_CARD_ASK_RE =
   /\b(?:buy|purchase|get|pick\s*up|load|top\s*up|pay|paying|payment|send|forward|share|scratch|redeem)\b|खरीद|भेज|पेमेंट|पैसे/;
 const GIFT_CARD_PAYMENT_RE = new RegExp(
-  `${GIFT_CARD_ASK_RE.source}[^.!?]{0,60}(?:${GIFT_CARD_RE.source})` +
-    `|(?:${GIFT_CARD_RE.source})[^.!?]{0,60}${GIFT_CARD_ASK_RE.source}`
+  `(?:${GIFT_CARD_ASK_RE.source})[^.!?]{0,60}(?:${GIFT_CARD_RE.source})` +
+    `|(?:${GIFT_CARD_RE.source})[^.!?]{0,60}(?:${GIFT_CARD_ASK_RE.source})`
 );
 
 // ---------------------------------------------------------------------------
@@ -408,7 +408,15 @@ const ACTION_REQUEST_RE = new RegExp(
     // and it cost a ZDNet AnchorDesk newsletter its discount on the ordinary
     // noun ("product updates") while saving nothing the Hinglish imperative
     // `kijiye` below does not already save. The ask in that row is "kijiye".
-    "enter|submit|upload|fill\\s*(?:in|out|up)?|provide|verif\\w*|confirm|update\\s*your|" +
+    // `verif\w*` used to be bare, which meant it matched the passive "has
+    // been successfully verified" and the bare noun "verification" exactly
+    // as readily as an actual instruction — an ordinary Income Tax
+    // refund-status notice ("...has been successfully verified. No further
+    // action is required...") lost its no-action-requested exoneration this
+    // way and crossed into suspicious over a completed-action statement, not
+    // an ask. Gated on a direct object, the same fix already applied to
+    // `update` above, for the same reason.
+    "enter|submit|upload|fill\\s*(?:in|out|up)?|provide|verify\\w*\\s+(?:your|the|this|it|my)|confirm|update\\s*your|" +
     // Transmit it. `sharing` — "Redeem now by sharing the confirmation code"
     // (reward-points row) was invisible to `\bshare\b`, which does not match
     // the gerund. It carries a determiner for exactly the reason
@@ -422,8 +430,20 @@ const ACTION_REQUEST_RE = new RegExp(
     // `give` is gated on an indirect object for the same reason: "give us
     // remote access" (fake-ISP row) is an ask, "gives you access to your
     // statements" is not.
-    "send|sending|forward|share|sharing\\s+(?:your|the|it|this|with|my)|transfer|remit|" +
-    "give\\s+(?:us|me|it|them)|" +
+    // `forward` was bare and matched "going forward" (an idiom, not an
+    // instruction) as readily as an actual ask — gated on an object the same
+    // way `sharing` is, just above.
+    "send|sending|forward(?:ing)?\\s+(?:it|this|to|the|your|my)|share|sharing\\s+(?:your|the|it|this|with|my)|transfer|remit|" +
+    "give\\s+(?:us|me|it|them)|tell\\s+(?:me|us)|" +
+    // "Join our VIP Telegram group and start trading today" was invisible —
+    // the message's only imperative was `join`, and `join` cannot be added
+    // bare or gated on a nearby noun: legit mailing-list mail says "Join our
+    // free webinar" and "Join the Fun at EFF's VIP Party" in the identical
+    // shape (30 corpus rows), so a `join` branch would re-open the exact
+    // topic-vs-act trap this file exists to close. `start trading` is the
+    // narrower, unambiguous act in the same sentence and has zero corpus
+    // collisions.
+    "start\\s+trading|" +
     // Answer on the channel they chose. "Kindly respond with your details"
     // (widow-inheritance row) — the list knew `reply with` and not `respond`.
     "(?:reply|respond|revert)\\s*(?:to|with|back)|" +
