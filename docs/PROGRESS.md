@@ -209,6 +209,18 @@ sitting with a worktree agent; `tests/test_engine.mjs`,
 commit — only `test_parity.py`'s prediction comparison is red, and only for
 the reason above.
 
+That port is done: `tests/fold_confusables.py` parses the same 273-entry
+table straight out of the generated `extension/lib/confusables-data.js`
+(rather than hand-copying it, which is exactly the kind of drift this test
+exists to catch) and replicates `foldConfusables(text, {substituteDigits:
+false})` — NFKD, fold, lowercase, strip combining marks — so
+`test_parity.py` now folds each text before handing it to
+`pipeline.predict_proba`, matching what `model.js` does before it
+tokenizes. `python3 tests/test_parity.py` passes clean: 0 tokenizer
+disagreements, 0 predictions over tolerance, largest disagreement 2.70e-07
+against the 1e-4 tolerance (floating-point rounding noise, not a real
+divergence). The other three suites are unchanged at the numbers above.
+
 **Not done — finding 3.** No `tests/holdout-scams.csv` exists; every miss-rate
 number this file reports, including the ones above, is still measured on
 data ~82% of which the model trained on. Data-collection work, not a code

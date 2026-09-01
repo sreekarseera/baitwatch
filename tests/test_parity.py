@@ -29,6 +29,8 @@ import sys
 import joblib
 import pandas as pd
 
+from fold_confusables import fold
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL = os.path.join(REPO, "training", "model", "model.joblib")
 DATASET = os.path.join(REPO, "training", "dataset.csv")
@@ -163,8 +165,14 @@ def main() -> int:
     if check_tokens(pipeline, texts, payload):
         return 1
 
-    # Python side.
-    py_probs = pipeline.predict_proba(texts)[:, 1]
+    # Python side. model.js vectorizes text through normalize(text,
+    # {substituteDigits: false}) before tokenizing (commit 715649f), folding
+    # Unicode-confusable letters and styled/accented Latin onto plain ASCII so
+    # the frozen vocabulary can recognize an obfuscated brand/action word.
+    # That's a deliberate divergence from the raw pipeline this test compares
+    # against, so fold the same way here or every case that exercises it
+    # reads as a false parity failure. See tests/fold_confusables.py.
+    py_probs = pipeline.predict_proba([fold(t) for t in texts])[:, 1]
 
     # JavaScript side — the actual shipped module, via Node.
     lines = run_harness(payload)
