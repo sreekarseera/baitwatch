@@ -13,13 +13,13 @@ Last updated **2026-09-01**.
 | Archive | `github.com/sreekarseera/baitwatch-archive` (private, the original 32-commit history) |
 | Detection | 24 heuristics + URL analysis + brand impersonation + on-device classifier |
 | Model | 3,603 rows, 94.31% validation, 93.81% ±0.88% five-fold CV, 6,000 terms, 263.9 KB |
-PLACEHOLDER| Tests | 297 engine checks, model parity (tokens + predictions), 5 accuracy gates, 3 held-out gates, 29 adapter checks, 20 browser checks |
+| Tests | 319 engine checks, model parity (tokens + predictions), 5 accuracy gates, 3 held-out gates, 29 adapter checks, 20 browser checks |
 
 Measured accuracy, from `node tests/test_benchmark.mjs`:
 
 | | rate |
 |---|---|
-PLACEHOLDER| legitimate mail flagged | 0.55% |
+| legitimate mail flagged | 0.55% |
 | …called *dangerous* | 0.16% |
 | targeted scams missed | 0.00% |
 | Hinglish/Hindi scams missed | 0.00% |
