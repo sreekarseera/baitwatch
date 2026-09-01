@@ -639,6 +639,13 @@ const RULES = [
       // clause rather than the message keeps "your account expires in 24 hours,
       // this link expires soon" firing on the half that matters.
       const t2 = t
+        // A URL is an address, not prose. "http://urgent.rug.ac.be/" trips
+        // the word "urgent" without a single human sentence containing it —
+        // a Belgian radio station's own domain name, not manufactured
+        // pressure. No scam's urgency language lives inside the link itself
+        // (it is always in the surrounding text, which this strip leaves
+        // untouched), so dropping URLs outright costs nothing real.
+        .replace(/\bhttps?:\/\/\S+/gi, " ")
         .replace(
           // "password" deliberately not in this list, though it was at first.
           // A *link*, code, token or session expiring is a security control the
@@ -660,7 +667,22 @@ const RULES = [
         // bank puts on its own login page, and it read as the pressure it warns
         // about. A scammer does not urge you to report them, so the urgency in
         // a report-this instruction always belongs to the defender.
-        .replace(/\breport\s+(?:any\s+|all\s+)?(?:suspicious|fraudulent|fraud|phishing|unauthori[sz]ed|this|it)\b[^.!?]{0,40}/g, " ");
+        .replace(/\breport\s+(?:any\s+|all\s+)?(?:suspicious|fraudulent|fraud|phishing|unauthori[sz]ed|this|it)\b[^.!?]{0,40}/g, " ")
+        // "Larger studies are urgently needed" / "urgently-needed food aid" is
+        // a shortage, not a countdown: "urgently" modifies "needed" — a
+        // reporter's judgment about a third-party situation — and no one is
+        // being rushed. A scam's "urgently" always attaches to something the
+        // *reader* is told to do (respond, send, verify, act), never to a
+        // thing being in short supply, so this specific adjectival use is the
+        // one construction safe to drop.
+        .replace(/\burgent(?:ly)?[\s-]+needed\b/g, " ")
+        // "The government should immediately announce..." is a recommendation
+        // about a third party's future action, not a directive aimed at the
+        // reader — the shape every real "immediately" scam pretext (verify
+        // immediately, call immediately, respond immediately) shares is an
+        // imperative or a command to the person reading it, never "X should
+        // immediately Y" about someone else.
+        .replace(/\bshould\s+immediately\b/g, " ");
       return (
         /\b(?:within\s*\d+\s*(?:hour|hr|minute|min|day)|in\s*the\s*next\s*\d+\s*(?:hour|minute)|before\s*(?:midnight|today|tonight|it\s*expires)|expir(?:es|ing|e)\s*(?:today|soon|in)|last\s*(?:chance|warning)|final\s*(?:notice|warning|reminder)|immediately|right\s*away|act\s*now|urgent(?:ly)?|asap)\b/.test(t2) ||
         new RegExp(`\\b(?:${HI.urgentLatin})\\b|${HI.urgentDevanagari}|आज\\s*रात|aaj\\s*raat`).test(t2)
