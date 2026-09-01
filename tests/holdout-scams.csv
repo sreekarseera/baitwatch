@@ -1,0 +1,70 @@
+# Source: UCI Machine Learning Repository, "SMS Spam Collection" v.1
+# https://archive.ics.uci.edu/dataset/228/sms+spam+collection (fetched directly, 2026-09-01)
+# Compiled by Tiago A. Almeida & Jose Maria Gomez Hidalgo; license: free for research/
+# non-commercial use with attribution (see the archive's own "readme"), no warranty.
+# These are the real messages UK mobile users actually received and reported as spam/
+# scam SMS (via the Grumbletext forum and the SMS Spam Corpus v0.1), not paraphrased or
+# invented. Rows below are hand-selected from the corpus's 747 spam-labeled messages,
+# picked for tactic diversity and checked against training/dataset.csv and
+# training/curated.csv for zero overlap. Genre labels are new (this corpus predates
+# most of extension/engine/heuristics.js's tactic vocabulary) but map onto it loosely:
+# prize_or_windfall/windfall_solicitation/impersonated_authority match RULES ids
+# directly; advance_fee is the 2000s UK equivalent (call a premium-rate number to
+# 'claim'); urgent_recontact, premium_rate_subscription_trap, fake_delivery_notice and
+# personal_info_harvest are adjacent tactics with no exact RULES id.
+genre,text
+advance_fee,"PRIVATE! Your 2003 Account Statement for 07753741225 shows 800 un-redeemed S. I. M. points. Call 08715203677 Identifier Code: 42478 Expires 24/10/04"
+advance_fee,"Loan for any purpose £500 - £75,000. Homeowners + Tenants welcome. Have you been previously refused? We can still help. Call Free 0800 1956669 or text back 'help'"
+advance_fee,"Your 2004 account for 07XXXXXXXXX shows 786 unredeemed points. To claim call 08719181259 Identifier code: XXXXX Expires 26.03.05"
+advance_fee,"Refused a loan? Secured or Unsecured? Can't get credit? Call free now 0800 195 6669 or text back 'help' & we will!"
+advance_fee,"Loans for any purpose even if you have Bad Credit! Tenants Welcome. Call NoWorriesLoans.com on 08717111821"
+prize_or_windfall,"WINNER! As a valued network customer you hvae been selected to receive a £900 reward! To collect call 09061701444. Valid 24 hours only. ACL03530150PM"
+prize_or_windfall,"URGENT! You have won a 1 week FREE membership in our £100,000 Prize Jackpot! Txt the word: CLAIM to No: 81010 T&C www.dbuk.net LCCLTD POBOX 4403LDNW1A7RW18"
+prize_or_windfall,"HMV BONUS SPECIAL 500 pounds of genuine HMV vouchers to be won. Just answer 4 easy questions. Play Now! Send HMV to 86688 More info:www.100percent-real.com"
+prize_or_windfall,"our mobile number has won £5000, to claim calls us back or ring the claims hot line on 09050005321."
+prize_or_windfall,"money!!! you r a lucky winner ! 2 claim your prize text money 2 88600 over £1million to give away ! ppt150x3+normal text rate box403 w1t1jy"
+prize_or_windfall,"Great News! Call FREEFONE 08006344447 to claim your guaranteed £1000 CASH or £2000 gift. Speak to a live operator NOW!"
+prize_or_windfall,"Congratulations - Thanks to a good friend U have WON the £2,000 Xmas prize. 2 claim is easy, just call 08712103738 NOW! Only 10p per minute. BT-national-rate"
+prize_or_windfall,"Collect your VALENTINE'S weekend to PARIS inc Flight & Hotel + £200 Prize guaranteed! Text: PARIS to No: 69101. www.rtf.sphosting.com"
+prize_or_windfall,"Congratulations YOU'VE Won. You're a Winner in our August £1000 Prize Draw. Call 09066660100 NOW. Prize Code 2309."
+prize_or_windfall,"YOU HAVE WON! As a valued Vodafone customer our computer has picked YOU to win a £150 prize. To collect is easy. Just call 09061743386"
+prize_or_windfall,"YOU VE WON! Your 4* Costa Del Sol Holiday or £5000 await collection. Call 09050090044 Now toClaim. SAE, TC s, POBox334, Stockport, SK38xh, Cost£1.50/pm, Max10mins"
+prize_or_windfall,"URGENT! Last weekend's draw shows that you have won £1000 cash or a Spanish holiday! CALL NOW 09050000332 to claim. T&C: RSTM, SW7 3SS. 150ppm"
+prize_or_windfall,"You are guaranteed the latest Nokia Phone, a 40GB iPod MP3 player or a £500 prize! Txt word: COLLECT to No: 83355! IBHltd LdnW15H 150p/Mtmsgrcvd18+"
+impersonated_authority,"As a valued customer, I am pleased to advise you that following recent review of your Mob No. you are awarded with a £1500 Bonus Prize, call 09066364589"
+impersonated_authority,"T-Mobile customer you may now claim your FREE CAMERA PHONE upgrade & a pay & go sim card for your loyalty. Call on 0845 021 3680.Offer ends 28thFeb.T&C's apply"
+impersonated_authority,"UpgrdCentre Orange customer, you may now claim your FREE CAMERA PHONE upgrade for your loyalty. Call now on 0207 153 9153. Offer ends 26th July. T&C's apply. Opt-out available"
+impersonated_authority,"URGENT, IMPORTANT INFORMATION FOR O2 USER. TODAY IS YOUR LUCKY DAY! 2 FIND OUT WHY LOG ONTO HTTP://WWW.URAWINNER.COM THERE IS A FANTASTIC SURPRISE AWAITING FOR YOU"
+windfall_solicitation,"Free entry in 2 a wkly comp to win FA Cup final tkts 21st May 2005. Text FA to 87121 to receive entry question(std txt rate)T&C's apply 08452810075over18's"
+windfall_solicitation,"Here is your discount code RP176781. To stop further messages reply stop. www.regalportfolio.co.uk. Customer Services 08717205546"
+windfall_solicitation,"Last Chance! Claim ur £150 worth of discount vouchers today! Text SHOP to 85023 now! SavaMob, offers mobile! T Cs SavaMob POBOX84, M263UZ. £3.00 Sub. 16"
+windfall_solicitation,"Dear Voucher Holder, 2 claim this weeks offer, at your PC go to http://www.e-tlp.co.uk/expressoffer Ts&Cs apply.2 stop texts txt STOP to 80062."
+windfall_solicitation,"Shop till u Drop, IS IT YOU, either 10K, 5K, £500 Cash or £100 Travel voucher, Call now, 09064011000. NTT PO Box CR01327BT fixedline Cost 150ppm mobile vary"
+windfall_solicitation,"BIG BROTHER ALERT! The computer has selected u for 10k cash or #150 voucher. Call 09064018838. NTT PO Box CRO1327 18+ BT Landline Cost 150ppm mobiles vary"
+windfall_solicitation,"Congratulations U can claim 2 VIP row A Tickets 2 C Blu in concert in November or Blu gift guaranteed Call 09061104276 to claim TS&Cs www.smsco.net cost£3.75max"
+windfall_solicitation,"83039 62735=£450 UK Break AccommodationVouchers terms & conditions apply. 2 claim you mustprovide your claim number which is 15541"
+urgent_recontact,"Urgent UR awarded a complimentary trip to EuroDisinc Trav, Aco&Entry41 Or £1000. To claim txt DIS to 87121 18+6*£1.50(moreFrmMob. ShrAcomOrSglSuplt)10, LS1 3AJ"
+urgent_recontact,"okmail: Dear Dave this is your final notice to collect your 4* Tenerife Holiday or #5000 CASH award! Call 09061743806 from landline. TCs SAE Box326 CW25WX 150ppm"
+urgent_recontact,"Please CALL 08712402779 immediately as there is an urgent message waiting for you"
+urgent_recontact,"Urgent! call 09061749602 from Landline. Your complimentary 4* Tenerife Holiday or £10,000 cash await collection SAE T&Cs BOX 528 HP20 1YF 150ppm 18+"
+urgent_recontact,"Urgent Urgent! We have 800 FREE flights to Europe to give away, call B4 10th Sept & take a friend 4 FREE. Call now to claim on 09050000555. BA128NNFWFLY150ppm"
+urgent_recontact,"URGENT This is our 2nd attempt to contact U. Your £900 prize from YESTERDAY is still awaiting collection. To claim CALL NOW 09061702893. ACL03530150PM"
+urgent_recontact,"Urgent! Please call 0906346330. Your ABTA complimentary 4* Spanish Holiday or £10,000 cash await collection SAE T&Cs BOX 47 PO19 2EZ 150ppm 18+"
+premium_rate_subscription_trap,"Thanks for your subscription to Ringtone UK your mobile will be charged £5/month Please confirm by replying YES or NO. If you reply NO you will not be charged"
+premium_rate_subscription_trap,"from www.Applausestore.com MonthlySubscription@50p/msg max6/month T&CsC web age16 2stop txt stop"
+premium_rate_subscription_trap,"U are subscribed to the best Mobile Content Service in the UK for £3 per 10 days until you send STOP to 82324. Helpline 08706091795"
+premium_rate_subscription_trap,"Bought one ringtone and now getting texts costing 3 pound offering more tones etc"
+premium_rate_subscription_trap,"Hi ya babe x u 4goten bout me?' scammers getting smart..Though this is a regular vodafone no, if you respond you get further prem rate msg/subscription. Other nos used also. Beware!"
+premium_rate_subscription_trap,"Ur TONEXS subscription has been renewed and you have been charged £4.50. You can choose 10 more polys this month. www.clubzed.co.uk *BILLING MSG*"
+fake_delivery_notice,"Customer service annoncement. You have a New Years delivery waiting for you. Please call 07046744435 now to arrange delivery"
+fake_delivery_notice,"Customer service announcement. We recently tried to make a delivery to you but were unable to do so, please call 07090298926 to re-schedule. Ref:9307622"
+prize_or_windfall,"u r a winner U ave been specially selected 2 receive £1000 cash or a 4* holiday (flights inc) speak to a live operator 2 claim 0871277810710p/min (18 )"
+prize_or_windfall,"You've won tkts to the EURO2004 CUP FINAL or £800 CASH, to collect CALL 09058099801 b4190604, POBOX 7876150ppm"
+prize_or_windfall,"You are a £1000 winner or Guaranteed Caller Prize, this is our Final attempt to contact you! To Claim Call 09071517866 Now! 150ppmPOBox10183BhamB64XE"
+windfall_solicitation,"FREE entry into our £250 weekly comp just send the word WIN to 80086 NOW. 18 T&C www.txttowin.co.uk"
+windfall_solicitation,"Dear Subscriber ur draw 4 £100 gift voucher will b entered on receipt of a correct ans. When was Elvis Presleys Birthday? TXT answer to 80062"
+premium_rate_subscription_trap,"SplashMobile: Choose from 1000s of gr8 tones each wk! This is a subscrition service with weekly tones costing 300p. U have one credit - kick back and ENJOY"
+windfall_solicitation,"Congrats! Nokia 3650 video camera phone is your Call 09066382422 Calls cost 150ppm Ave call 3mins vary from mobiles 16+ Close 300603 post BCM4284 Ldn WC1N3XX"
+personal_info_harvest,"Hello. We need some posh birds and chaps to user trial prods for champneys. Can i put you down? I need your address and dob asap. Ta r"
+prize_or_windfall,"This is the 2nd time we have tried to contact u. U have won the £1450 prize to claim just call 09053750005 b4 310303. T&Cs/stop SMS 08718725756. 140ppm"
+urgent_recontact,"Urgent! Please call 09066612661 from your landline, your complimentary 4* Lux Costa Del Sol holiday or £1000 CASH await collection. ppm 150 SAE T&Cs James 28, EH74RR"
