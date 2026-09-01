@@ -1,0 +1,223 @@
+[
+  {
+    "name": "Hacker News comment — skepticism about an Apple demand story",
+    "site": "news.ycombinator.com",
+    "kind": "comment",
+    "captured": "2026-09-01",
+    "text": "I'm convinced that this is just guerilla marketing from Apple. When this started spreading a day or two ago, it was all from no-name spam media sites that are paid to publish articles.",
+    "page": {
+      "url": "https://news.ycombinator.com/item?id=49508982",
+      "title": "Apple caught off guard by AI demand for Mac Mini and Mac Studio | Hacker News",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "Hacker News comment — miniature painting tips",
+    "site": "news.ycombinator.com",
+    "kind": "comment",
+    "captured": "2026-09-01",
+    "text": "Sublime work OP. Love the sheen control, the glossy coffee. Since they're clearly a warhammer 40k fan, a recent discovery of mine for mini painting: artist gouache or artist watercolor are awesome for pin-lining and recess shading the way oil paint or enamels are often used for those tasks, but only water is needed instead of white spirit. And they're indefinitely \"editable\" with a damp brush / qtip. The only downside is that you need to varnish to seal the watercolor before painting over it. A black and a burnt umber alone will get you really far. Make sure the gouache or watercolor use a gum arabic binder.",
+    "page": {
+      "url": "https://news.ycombinator.com/item?id=49481141",
+      "title": "Damn fine tiny cafe | Hacker News",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "Hacker News Show HN — laser graffiti project background",
+    "site": "news.ycombinator.com",
+    "kind": "comment",
+    "captured": "2026-09-01",
+    "text": "I remember seeing this the first time in Vienna by a friend of mine, Michi who came back from NYC and I believe he learned about it at the local hacker space at the time: NYC resistor... Originally the idea seems to have been from the Graffiti Research Lab... I've always wanted to make it a web app. So all you need now is a projector, a laser pointer, and a laptop (with a camera).",
+    "page": {
+      "url": "https://news.ycombinator.com/item?id=49489376",
+      "title": "Show HN: Laser Graffiti | Hacker News",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "Hacker News comment — GPS jamming and VOR navaids",
+    "site": "news.ycombinator.com",
+    "kind": "comment",
+    "captured": "2026-09-01",
+    "text": "Whats really sad for aviation is there was already an extensive network of ground based navaids. As GPS has proliferated, they've slowly been decommissioned as they age out to save on cost. I'm specifically referring to VORs which provide azimuth and range to station.",
+    "page": {
+      "url": "https://news.ycombinator.com/item?id=49500504",
+      "title": "Cheap GPS jammers are filling the world with navigation dead zones | Hacker News",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "Hacker News comment — ad blockers as a safety issue against scamware",
+    "site": "news.ycombinator.com",
+    "kind": "comment",
+    "captured": "2026-09-01",
+    "text": "Ad blocking has become a safety issue. My parents are at an age where they fall for things. If a malicious ad pops up and offers to install McAfee, some other form of crapware, or outright scamware, they'll click that ad and install the thing.",
+    "page": {
+      "url": "https://news.ycombinator.com/item?id=49514878",
+      "title": "Google Has Removed MV2 Extensions from the Chrome Web Store, Including UBO | Hacker News",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "News article — Nepal and China flood death toll",
+    "site": "aljazeera.com",
+    "kind": "news-article",
+    "captured": "2026-09-01",
+    "text": "The death toll from catastrophic flooding in Nepal and China has reached 1,019, and more than 4,400 people remain missing as rescue crews work to reach communities cut off by the disaster. In an update on Tuesday, Nepal's National Disaster Risk Reduction and Management Authority (NDRRMA) revised the number of deaths to 1,003 from 987, with 3,916 people missing, including 583 foreigners.",
+    "page": {
+      "url": "https://www.aljazeera.com/news/2026/9/1/death-toll-from-devastating-floods-in-china-and-nepal-surpasses-1000",
+      "title": "Death toll from devastating floods in Nepal and China surpasses 1,000 | Al Jazeera",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "News article — Messi's international career record",
+    "site": "aljazeera.com",
+    "kind": "news-article",
+    "captured": "2026-09-01",
+    "text": "Argentina superstar Lionel Messi, one of the greatest footballers of all time, brought down the curtain on his two-decade-long international career on Monday. The 39-year-old diminutive forward broke several records, won trophies and registered numerous goals and assists during his time with Argentina. Messi won the FIFA World Cup once, in Qatar in 2022, leading Argentina to their first world title since 1986. He also reached the final two other times, in 2014 and 2026, losing to Germany and Spain, respectively.",
+    "page": {
+      "url": "https://www.aljazeera.com/sports/2026/9/1/lionel-messi-records-argentina-international-retirement-football",
+      "title": "Lionel Messi's Argentina career in numbers: Records, goals, trophies | Al Jazeera",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "News article — Apple's new CEO takes over",
+    "site": "aljazeera.com",
+    "kind": "news-article",
+    "captured": "2026-09-01",
+    "text": "John Ternus becomes Apple's chief executive on Tuesday, taking over from Tim Cook after a 15-year tenure. Ternus inherits a company that dominates the smartphone market but lags competitors in artificial intelligence capabilities. Ternus, 51, joined Apple's design team in 2001 and rose to senior vice president of hardware engineering. He oversees the engineering teams responsible for Apple's entire product lineup, particularly iPhones, which generate most company revenue. The transition occurs just one week before Apple's annual iPhone event on September 9, where the company is expected to introduce its first foldable handset.",
+    "page": {
+      "url": "https://www.aljazeera.com/economy/2026/9/1/john-ternus-to-lead-apple-into-the-age-of-ai",
+      "title": "John Ternus to lead Apple into the age of AI | Al Jazeera",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "Encyclopedia article — Nancy Grace Roman Space Telescope",
+    "site": "en.wikipedia.org",
+    "kind": "reference",
+    "captured": "2026-09-01",
+    "text": "The Nancy Grace Roman Space Telescope (shortened as the Roman Space Telescope, Roman, NGRST, or RST) is a NASA infrared space telescope that was launched on a trajectory toward a Sun-Earth L2 orbit on 30 August 2026 by a Falcon Heavy launch vehicle.",
+    "page": {
+      "url": "https://en.wikipedia.org/wiki/Nancy_Grace_Roman_Space_Telescope",
+      "title": "Nancy Grace Roman Space Telescope - Wikipedia",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "Bank product page — ICICI fixed deposit rates",
+    "site": "icici.bank.in",
+    "kind": "product-page",
+    "captured": "2026-09-01",
+    "text": "Senior citizens (60+ years) can enjoy rates up to 7.10% per annum and general citizens can benefit from rates up to 6.50% per annum. FD interest rates are subject to change without prior notice. The revised interest rates will apply to new as well as renewed FDs. FDs offer assured returns which ensure stable financial growth. Senior citizens earn an additional 0.50% interest on Fixed Deposits, helping them maximise their returns. You can opt for flexible payout options - choose from monthly, quarterly, annual or cumulative payouts.",
+    "page": {
+      "url": "https://www.icici.bank.in/personal-banking/deposits/fixed-deposit/fd-interest-rates",
+      "title": "Fixed Deposit Interest Rates - ICICI Bank",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "Bank product page — SBI term deposit rates",
+    "site": "sbi.bank.in",
+    "kind": "product-page",
+    "captured": "2026-09-01",
+    "text": "Revision in Interest Rates on Retail Domestic Term Deposits (Below Rs. 3 crore). SBI Patrons: An additional benefit of 10 bps is applicable for Super Senior Citizens (80 years and above). SBI GREEN RUPEE TERM DEPOSIT is available for three specific tenors of 1111, 1777 & 2222 days, at par with Card Rate, w.e.f 01.05.2026. The scheme is not applicable to Recurring Deposit Scheme, Green Rupee Term Deposit, Tax Savings Scheme 2006, MODS, Capgain Scheme and Non-Callable Term Deposits.",
+    "page": {
+      "url": "https://sbi.bank.in/web/interest-rates/deposit-rates/retail-domestic-term-deposits",
+      "title": "Retail Domestic Term Deposits Interest Rates - SBI",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "Bank product page — Ally Bank CD rates",
+    "site": "ally.com",
+    "kind": "product-page",
+    "captured": "2026-09-01",
+    "text": "Choose from a variety of terms each offering a competitive, fixed rate. Early withdrawal penalty will apply. APY is fixed for the term of the CD but subject to change upon renewal. Start with a great rate, plus have the opportunity to increase your rate once over the 2-year term or twice over the 4-year term, if our rate for your term and balance tier goes up. You can withdraw all your money any time after the first six days following the date you funded the account, and keep the interest earned with no penalties. Interest compounded daily. Member FDIC. No minimum deposit to open or earn APY.",
+    "page": {
+      "url": "https://www.ally.com/bank/cd-rates/",
+      "title": "CD Rates - Ally Bank",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "Pricing page — Notion Business plan",
+    "site": "notion.com",
+    "kind": "product-page",
+    "captured": "2026-09-01",
+    "text": "Business. $20 per member / month. For growing businesses to streamline teamwork. Notion Agent (chat, generate, autofill, translate). AI Meeting Notes. Enterprise Search. SAML single sign-on (SSO). Granular database permissions. Verify any page. Private teamspaces. Domain verification. Premium connections.",
+    "page": {
+      "url": "https://www.notion.com/pricing",
+      "title": "Pricing - Notion",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "Product page — Apple iPhone shop page",
+    "site": "apple.com",
+    "kind": "product-page",
+    "captured": "2026-09-01",
+    "text": "The thinnest iPhone ever. With the power of pro inside. Even more delightful. Even more durable. Feature stacked. Value packed. Innovative design for ultimate performance and battery life. Save up to $441.36. No trade-in needed. Save up to $899 after trade-in.",
+    "page": {
+      "url": "https://www.apple.com/shop/buy-iphone/iphone-16",
+      "title": "Buy iPhone - Apple",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "Newsletter — personal finance columnist's launch post",
+    "site": "substack.com",
+    "kind": "newsletter",
+    "captured": "2026-09-01",
+    "text": "After close to 30 years covering personal finance and investing for The Globe and Mail newspaper, I decided to retire and launch a new career phase that starts with this newsletter. My aim is to connect events in Canada and around the world to your finances. I am not your financial planner, or your investment adviser. My ex-Globe colleague Erica Alini wrote something recently that really threw me. It's about an apparently tech-savvy online investor who lost $70,000 to hackers who got access to her digital investing account. Are the hackers winning?",
+    "page": {
+      "url": "https://robcarrickpf.substack.com/p/im-back",
+      "title": "I'm back - Rob Carrick's Substack",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "Newsletter — tech radio show notes mentioning a Marketplace scam",
+    "site": "richontech.tv",
+    "kind": "newsletter",
+    "captured": "2026-09-01",
+    "text": "Stephanie shared a story about how she got scammed by trying to sell something on Facebook Marketplace. She ended up calling a phony Zelle number she quickly found on Google. Check out CoPilot, Monarch, PocketGuard, YNAB, EveryDollar and Empower.",
+    "page": {
+      "url": "https://richontech.tv/p/mint-alternatives-and-avoiding-online-c42",
+      "title": "Mint alternatives & avoiding online selling scams - Rich on Tech",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "Government portal — Income Tax Department notices",
+    "site": "incometax.gov.in",
+    "kind": "notice",
+    "captured": "2026-09-01",
+    "text": "Form 1 under the 'Foreign Assets of Small Taxpayers Disclosure Scheme' is now available for filing. ITR-1, ITR-2, ITR-3, ITR-4, ITR-5, ITR-6 and ITR-7 for AY 2026-27 are available for filing through both online and offline utilities. Filing of TDS/TCS Correction Statements pertaining to Tax Year 2026-27 will be enabled shortly. Demand Management Facilitation Centre (DFC), has been set up to guide Taxpayers on issues/grievances regarding their outstanding demands. This is a one-time compliance opportunity by the Government enabling eligible taxpayers to voluntarily disclose previously unreported foreign assets and income.",
+    "page": {
+      "url": "https://www.incometax.gov.in/iec/foportal/",
+      "title": "Income Tax Department Portal",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  }
+]
