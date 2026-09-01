@@ -212,6 +212,14 @@ const LEGIT = [
    "[Spambayes] Deployment. FYI, I'll never trust such a scheme: I have no idea what the security team would say about it, and the government would probably have opinions too. Anyway, that was my two cents."],
   ["hindi crime report — a filed case is a fact being reported, not a threat made to you (was 49)",
    "पुलिस ने मामला दर्ज किया है और जांच जारी है। साइबर सेल के अधिकारियों ने बताया कि यह गिरोह पिछले साल से सक्रिय था।"],
+  // Real false positive, found by tests/test_ambient.mjs's mailing-list
+  // corpus: advance_fee solo-convicted this row on "charged" (matching bare
+  // "charge" inside HI.fee) followed within 25 characters by "taxpayers"
+  // (matching bare "pay" with no boundary) — two word fragments, not a named
+  // fee and a send verb. Fixed by giving that "pay" alternative the same \b
+  // the other two branches of the same regex already had.
+  ["libertarian party press release on military spending, mentions being \"charged\" to \"taxpayers\"",
+   "LP RELEASE: Outrageous military spending\n-----BEGIN PGP SIGNED MESSAGE-----\n\n===============================\nNEWS FROM THE LIBERTARIAN PARTY\n2600 Virginia Avenue, NW, Suite 100\nWashington DC 20037\nWorld Wide Web: http://www.LP.org\n===============================\nFor release: July 25, 2002\n===============================\nFor additional information:\nGeorge Getz, Press Secretary\nPhone: (202) 333-0008 Ext. 222\nE-Mail: someone@example.com\n===============================\n\nThousands spent on strippers, golf memberships\nshows Pentagon spending is out of control, Libertarians say\n\nWASHINGTON, DC -- Quiz question: Which of the following items have been \ncharged to the taxpayers recently by military personnel wielding \ngovernment-issued credit cards?\n\n(a) $38,000 for lap dancing at strip clubs near military bases."],
 ];
 
 for (const [name, text] of LEGIT) {

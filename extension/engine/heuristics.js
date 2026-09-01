@@ -735,7 +735,15 @@ const RULES = [
       // dangerous on nothing else. An advance fee is only a scam when someone
       // is asking you to send it.
       new RegExp(
-        `(?:${HI.fee})[^.!?]{0,25}(?:${HI.send}|bhar|भर|pay)` +
+        // "pay" needs the same \b the other two branches already give it.
+        // Without it this branch matched "charge" (bare, inside HI.fee, itself
+        // a substring of "charged") followed by "pay" bare inside "taxpayers"
+        // — "...items have been charged to the taxpayers recently..." — and
+        // convicted a Libertarian Party press release on military spending
+        // alone. Nothing in that sentence names a cost or asks for one sent;
+        // both "words" were fragments of unrelated words that happened to
+        // land within 25 characters of each other.
+        `(?:${HI.fee})[^.!?]{0,25}(?:${HI.send}|bhar|भर|pay\\b)` +
           // Either order, like CRYPTO_TRANSFER_RE: "pay the file processing
           // charge" puts the verb first, "delivery fee bhejiye" puts it last.
           `|(?:file|delivery|clearance|क्लियरेंस|processing)\\s*(?:${HI.fee})[^.!?]{0,30}(?:${HI.send}|bhar|भर|pay\\b)` +
