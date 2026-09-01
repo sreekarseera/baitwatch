@@ -42,6 +42,30 @@ const MODEL_MAX_PULL = 50;
 // properly and are what should decide there.
 const MODEL_MAX_PULL_PAGE = 22;
 
+// A rule heavy enough to be conclusive on its own — enough that "the text names
+// no action" stops being a reason to doubt it.
+//
+// The bar is deliberately *above* the 2.0 that heuristics.js uses to withhold
+// its exonerating discount, and the gap between the two is the whole design.
+// 2.0–2.3 buys `advance_fee`, `delivery_redispatch_fee`, `secrecy_request`,
+// `credential_request`, `job_advance_fee`, `investment_scam`,
+// `windfall_solicitation`, `boss_impersonation` and `sextortion_threat` — heavy
+// rules, but ones that can fire on a description of a tactic rather than an
+// instance of it ("our advisory group guarantees 40 percent monthly returns" is
+// also a sentence in a news article about a Ponzi scheme). At 2.4 and up sit
+// the rules that cannot fire without someone being asked for something:
+// gift_card_payment (3.0), upi_collect_request (2.6), payment_detail_change
+// (2.5), crypto_transfer (2.4) and family_emergency (2.4) — each one is already
+// gated on a verb pointed at the reader, which is why they are safe to exempt.
+// Verified against the current weights in heuristics.js rather than assumed.
+//
+// The URL and impersonation layers also have signals at or above this
+// (lookalike_domain 3.0, userinfo_url 2.4, brand_impersonation 2.6, and the
+// urlhaus_match 4.0 built below), and they are included for completeness — but
+// every one of them needs a URL to exist at all, and the cap already does not
+// apply to text that carries a URL, so in practice they never decide anything.
+const CONCLUSIVE_AT = 2.4;
+
 // Vocabulary terms a message must hit before the model's opinion counts at all.
 // Three is low on purpose: it is meant to catch text the model genuinely cannot
 // read — Hindi script, mostly — not to second-guess short messages.
@@ -139,7 +163,59 @@ export async function analyzeLocal(text, opts = {}) {
   const maxPull = opts.page?.url ? MODEL_MAX_PULL_PAGE : MODEL_MAX_PULL;
   const modelPull = model.available ? (model.probability - 0.5) * (maxPull * 2) : 0;
 
-  const score = Math.max(0, Math.min(100, ruleScore + modelPull));
+  let score = Math.max(0, Math.min(100, ruleScore + modelPull));
+
+  // The no-ask cap.
+  //
+  // Text that names no action for the reader to take and carries no link has
+  // not shown an *act*; at most it has shown a *topic*. Every rule in this set
+  // crosses SUSPICIOUS_AT firing alone — squash() puts the threshold at a raw
+  // weight of 1.12 and the lightest rule is 1.2 — so a rule that describes a
+  // topic (arrest, government, prize, investing) is granted the authority of one
+  // that describes an act, and that is where the recurring false positives come
+  // from: a mailing-list thread titled "Six arrested for attacking Palio
+  // jockey" trips threat_of_consequence and warns the user. Requiring the ask is
+  // what separates the two without touching the rules themselves.
+  //
+  // This is emphatically NOT a two-signal requirement. One rule firing alone
+  // still convicts, and must: 62% of the scams this tool catches rest on a
+  // single rule, so a corroboration requirement would drop 197 real catches.
+  // The condition here is about the absence of an ask and nothing else — no
+  // count of signals appears in it.
+  //
+  // It lives here rather than in analyzeHeuristics for three reasons. The
+  // "carries no URL" half is the URL layer's knowledge, and analyzeHeuristics
+  // never sees a link — it takes text and a two-field context object. The
+  // quantity being capped is the whole rule stack, and a clamp on the
+  // heuristics subtotal alone would simply be added back on top of by the URL
+  // and impersonation layers. And urlhaus_match, the heaviest conclusive signal
+  // there is, is manufactured a few lines above this and does not exist inside
+  // heuristics.js at all. So heuristics.js establishes the fact (noAsk) and
+  // this function decides what it is worth, which is also the split every other
+  // cross-layer judgement in this file already uses.
+  //
+  // The cap binds the *rule* contribution and leaves the model's pull intact,
+  // which is a deliberate narrowing of "cannot reach SUSPICIOUS_AT" and was
+  // measured against the alternative. Capping the final score instead —
+  // score = min(score, 34) — scores identically on false positives (15/1834
+  // either way) and costs 29 corpus scams the model was catching alone, three
+  // of them classic advance-fee letters ("I AM MRS. SESE-SEKO WIDOW OF LATE
+  // PRESIDENT MOBUTU"). Those rows are truncated at 1,200 characters in the
+  // corpus, so the request really has been cut off and "names no action" is a
+  // true statement about the text — the model is reading the narrative, which
+  // is the one thing it is better at than any rule here.
+  //
+  // The diagnosis this cap comes from is about *rules* convicting alone on a
+  // topic, and the model is not a rule: MODEL_MAX_PULL was raised to 50 in a
+  // measured decision recorded above, precisely so it could warn on text that
+  // trips no rule. Silencing it here would quietly undo that for no gain.
+  const conclusive = [...heuristics.signals, ...urls.signals, ...impersonation.signals].some(
+    (s) => s.weight >= CONCLUSIVE_AT
+  );
+  const capped = heuristics.noAsk && urls.urls.length === 0 && !conclusive;
+  if (capped) {
+    score = Math.max(0, Math.min(100, Math.min(ruleScore, SUSPICIOUS_AT - 1) + modelPull));
+  }
 
   const verdict =
     score >= DANGEROUS_AT ? VERDICT.DANGEROUS : score >= SUSPICIOUS_AT ? VERDICT.SUSPICIOUS : VERDICT.SAFE;

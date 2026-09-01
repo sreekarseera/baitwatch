@@ -80,6 +80,37 @@ const SCAMS = [
    "Hello, this is the security team. We are contacting you about unusual sign-in attempts. Reply with the verification code we just sent so we can lock the intruder out."],
   ["debt threat aimed at the reader",
    "FINAL NOTICE. Your outstanding balance remains unpaid. If you do not settle today, legal action will be initiated and a warrant issued against you. Pay here: secure-settle.co/pay"],
+  // The other half of the no-ask cap (see engine.js). Each of these asks for
+  // something, carries no URL, and fires only rules below the 2.4 conclusive
+  // bar — so each one is convicted solely by ACTION_REQUEST_RE seeing the ask.
+  // A verb dropped from that list turns any of them silently safe, which is the
+  // failure mode the cap makes expensive. Every one of these is a row from
+  // curated.csv or curated-hinglish.csv that the pre-audit verb list could not
+  // see the ask in.
+  ["Hinglish KYC threat — the ask is the imperative \"kijiye\", not the word \"update\"",
+   "Aapka KYC expire ho gaya hai. Turant update kijiye warna account band ho jayega."],
+  ["Hinglish customs fee — \"bharkar\" and \"karwaiye\", neither an English verb",
+   "Aapka parcel customs me ruka hua hai. Clearance fee bharkar release karwaiye."],
+  ["Devanagari remote-access lure — the ask is \"शेयर कीजिए\"",
+   "आपके प्रिंटर ड्राइवर में गड़बड़ी की शिकायत मिली है HP सपोर्ट को, फ्री रिपेयर के लिए AnyDesk कोड शेयर कीजिए हमारे तकनीशियन के साथ।"],
+  ["Devanagari SIM-deactivation threat — the ask is the IVR \"9 दबाएं\"",
+   "यह TRAI से सूचना है, आपके नाम पर 9 सिम कार्ड एक्टिव हैं जो नियम विरुद्ध है, 2 घंटे में नंबर डिएक्टिवेट हो जाएगा, e-KYC के लिए 9 दबाएं।"],
+  ["parcel redispatch — the whole ask is \"Reschedule\", which \\breschedul\\b can never match",
+   "Amazon: Your package cannot be delivered. Reschedule here."],
+  ["419 letter — the ask is \"respond with\", not the \"reply with\" the list knew",
+   "I am a widow with terminal illness wishing to donate my late husband's fortune to you. Kindly respond with your details."],
+  ["fake ISP — the ask is \"give us\", gated on the indirect object",
+   "We are from your internet provider. Your router is compromised. Give us remote access to fix it or your connection will be disconnected."],
+  ["job advance fee — the ask is \"paying\", which \\bpay\\b cannot match",
+   "Earn from YouTube likes! Get paid per video. Join by paying a one time membership of 250 only."],
+  // The cap's escape hatch, and the invariant underneath it. This names no
+  // action at all ("double" is not an ask) and carries no link, so the cap
+  // would hold it under 35 — except crypto_transfer is 2.4, at or above
+  // CONCLUSIVE_AT, and a conclusive rule is exempt. It is also a single rule
+  // convicting alone with nothing corroborating it, which must keep working:
+  // 62% of the scams this tool catches rest on one rule.
+  ["conclusive rule alone, with no ask and no link, is exempt from the cap",
+   "Double your Bitcoin in 24 hours. Wallet address below, offer expires today."],
 ];
 
 for (const [name, text] of SCAMS) {
@@ -168,6 +199,19 @@ const LEGIT = [
   // authority.
   ["political mailing-list thread about government policy",
    "Re: the broadband bill. The government's own regulator admits the rollout targets were never realistic, and the federal subsidy programme has been reannounced three times. Worth reading the committee transcript before Thursday's call — I'll circulate the link."],
+  // The no-ask cap (see engine.js). Each of these is a topic-shaped rule
+  // faithfully reporting its topic in text that asks the reader for nothing and
+  // carries no link — the class docs/PROGRESS.md 2026-09-01 identifies as the
+  // source of the recurring false positives. Scores before the cap are in the
+  // labels; each one is a real corpus row or a close paraphrase of one.
+  ["mailing-list thread about arrests — threat_of_consequence reporting a topic (was 30)",
+   "Six arrested for attacking Palio jockey. The court in Siena heard that police detained the group after the race; a fine of 2,000 euros was imposed on the stable. Thread continues from last week's digest."],
+  ["think-tank press release on market regulation — was 67, \"dangerous\"",
+   "GOVERNMENT REGULATION IS KILLING THE STOCK MARKET. Press release from the Ayn Rand Institute, Irvine CA. Federal securities rules have destroyed investor confidence and depressed returns across the market, argues a new commentary."],
+  ["mailing-list post that happens to say \"security team\" and \"government\" — was 43",
+   "[Spambayes] Deployment. FYI, I'll never trust such a scheme: I have no idea what the security team would say about it, and the government would probably have opinions too. Anyway, that was my two cents."],
+  ["hindi crime report — a filed case is a fact being reported, not a threat made to you (was 49)",
+   "पुलिस ने मामला दर्ज किया है और जांच जारी है। साइबर सेल के अधिकारियों ने बताया कि यह गिरोह पिछले साल से सक्रिय था।"],
 ];
 
 for (const [name, text] of LEGIT) {
