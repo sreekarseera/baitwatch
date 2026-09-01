@@ -212,6 +212,17 @@ const LEGIT = [
    "[Spambayes] Deployment. FYI, I'll never trust such a scheme: I have no idea what the security team would say about it, and the government would probably have opinions too. Anyway, that was my two cents."],
   ["hindi crime report — a filed case is a fact being reported, not a threat made to you (was 49)",
    "पुलिस ने मामला दर्ज किया है और जांच जारी है। साइबर सेल के अधिकारियों ने बताया कि यह गिरोह पिछले साल से सक्रिय था।"],
+  // Real corpus solo-fire, tests/test_ambient.mjs [corpus] delivery_redispatch_fee:
+  // an ILUG mailing-list reply about building a package from source. "cannot
+  // open load file" tripped the rule's `failed` branch, and "helpful feedback"
+  // tripped `payment` — not because it says anything about paying, but because
+  // HI.fee's Latin alternatives ("fee", "charge", "duty") are bare substrings
+  // with no \b, so "fee" matched inside "feedback". Fixed by dropping the
+  // Latin duplicates from that rule's local payment check (they're already
+  // word-bounded on the line above) and keeping only the Devanagari terms,
+  // which were never the substring risk.
+  ["mailing-list reply about a build failure, not a delivery",
+   "RE: [ILUG] Newby to Linux looking for information on cvs\nHello all,\nFirstly I'd like to thank all of you for the fast and very helpful feedback\nthat I got to my question today. I have one more question though. I\ndownloaded the w3 and url files from the server at the first try thanks to\nthe help that I received today. Then though I tried to build them. I\nstarted by trying the w3 program. I used the following lines which produced\nsome strange results. Would any one be able to set me straight?\n\n./configure --with-emacs --prefix=/usr/local/src/beta/w3 --exec-prefix=/usr/\nlocal/src/beta/w3 --with-url=/url/url\nThat worked fine so I moved to the next step.\nmake\nAt the bottem of the text I got the following messages:\nCannot open load file: /url/url/url-vars.el\nmake[1]: *** [custom-load.el] Error 255\nmake[1]: Leaving directory `/usr/local/src/beta/w3/lisp'\nmake: *** [w3] Error 2\n\nWhen I got around to trying the url package I had no problems. In saying\nthat this doesn't necessarily mean that I was doing it right so below are\nthe commands I used.\n./configure --with-emacs --prefix=/url/url --exec-prefix=/url/url\nfollowed by the commands make and make install.\nThere is no text files which conta"],
 ];
 
 for (const [name, text] of LEGIT) {
