@@ -327,6 +327,26 @@ const INVESTMENT_PROMISE_RE = new RegExp(
     `|(?:${PROMISED_YIELD_RE})[^।.!?]{0,80}(?:${INVESTMENT_INSTRUMENT_RE})`
 );
 
+// A news report *about* a fraud case narrates the same promise the scam made,
+// but in the third person and past tense, aimed at nobody: "a fake trading
+// application that promised guaranteed monthly returns to more than 200
+// investors" contains the exact promised-yield shape above, next to the exact
+// instrument word ("trading"), and still is not a pitch — it is a report that
+// one already happened and was caught. The words that appear in that sentence
+// never appear in the pitch itself, because the pitch wants you to believe the
+// scheme is live and legitimate, not adjudicated: an arrest, a custody, an
+// investigator, a case number, a police force. This is the same directional
+// problem threat_of_consequence solved this morning ("six arrested for
+// attacking a jockey" vs "you will be arrested") — here the fix is a plain
+// exclusion rather than a same-sentence frame, because unlike a threat, a
+// yield promise has no second-person form to require: a bank's own product
+// page ("book a fixed deposit online and earn assured returns") is just as
+// impersonal as the news report is, so direction can't be the signal for this
+// rule. Reporting language is what's left to gate on. See tests/ambient-seed.json,
+// "News report — arrests in a cyber fraud case".
+const FRAUD_CASE_REPORT_RE =
+  /\b(?:police|arrest(?:ed|s)?|accused|custody|magistrate|charge[\s-]?sheet|convicted|investigat(?:ors?|ion|ing|ed)|cybercrime|case\s*(?:has\s*been\s*)?registered|produced\s*before)\b/;
+
 // A gift card named anywhere used to be the whole rule, at the heaviest weight
 // any rule carries (3.0) — enough to convict on its own. But the tactic this
 // rule names is being asked to *pay* in gift cards, and an ordinary retail
@@ -1018,6 +1038,11 @@ const RULES = [
     weight: 2.2,
     why: "It promises a guaranteed or unusually high return on an investment. Real investments carry risk — nobody can guarantee a return, and this is the setup for a payout that never comes.",
     test: (t) =>
+      // Reporting about a fraud case, not a pitch — see FRAUD_CASE_REPORT_RE.
+      // Checked first and short-circuits the whole rule: every branch below
+      // is the shape a report *about* a scam can also contain.
+      !FRAUD_CASE_REPORT_RE.test(t) &&
+      (
       // "guarantee(s/d) ... return/profit/income" gated within a sentence,
       // not requiring the words to sit directly next to each other — real
       // pitches say "guarantees 40 percent monthly returns", not "guaranteed
@@ -1026,7 +1051,20 @@ const RULES = [
       // *whitespace* characters, not zero or more words — "returns" itself
       // was also never matched since the noun side had no plural either.
       /\bguarantee[ds]?\b[^.!?]{0,30}\b(?:returns?|profits?|income)\b/.test(t) ||
-      /double\s*(?:your\s*)?money|assured\s*returns?/.test(t) ||
+      // "assured returns" used to be its own ungated alternative here,
+      // matching the bare phrase anywhere in the message. A bank's own FD
+      // product page says exactly this — "book a fixed deposit online and
+      // earn assured returns of up to 7.25% per annum" — with no instrument
+      // word this rule recognises ("deposit" isn't in
+      // INVESTMENT_INSTRUMENT_RE) and no act beyond describing its own
+      // product. "assured" and "returns" are already YIELD_QUALIFIER_RE and
+      // YIELD_NOUN_RE, so PROMISED_YIELD_RE already matches this phrase on
+      // its own; what it was missing was INVESTMENT_PROMISE_RE's instrument
+      // gate. Dropping the bare alternative and leaning on that gate instead
+      // costs nothing measured — neither "assured return" nor "assured
+      // returns" appears anywhere in training/dataset.csv or
+      // training/curated.csv, gated or not.
+      /double\s*(?:your\s*)?money/.test(t) ||
       // गारंटीड रिटर्न / पैसा डबल / डेली प्रॉफिट — none of this needs a
       // digit to be recognisable, which matters because normalize() folds
       // digits onto letters ("40%" survives as letters, not as "40").
@@ -1034,7 +1072,7 @@ const RULES = [
       // The instrument in the same sentence as a promised yield — see
       // INVESTMENT_PROMISE_RE, which replaces the ungated conjunction that used
       // to close this rule.
-      INVESTMENT_PROMISE_RE.test(t),
+      INVESTMENT_PROMISE_RE.test(t)),
   },
   {
     id: "windfall_solicitation",
