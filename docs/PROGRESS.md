@@ -13,13 +13,13 @@ Last updated **2026-09-01**.
 | Archive | `github.com/sreekarseera/baitwatch-archive` (private, the original 32-commit history) |
 | Detection | 24 heuristics + URL analysis + brand impersonation + on-device classifier |
 | Model | 3,603 rows, 94.31% validation, 93.81% ±0.88% five-fold CV, 6,000 terms, 263.9 KB |
-| Tests | 319 engine checks, model parity (tokens + predictions), 5 accuracy gates, 3 held-out gates, 29 adapter checks, 20 browser checks |
+| Tests | 324 engine checks, model parity (tokens + predictions), 5 accuracy gates, 3 held-out gates, 9 ambient solo-fire gates, 29 adapter checks, 20 browser checks |
 
 Measured accuracy, from `node tests/test_benchmark.mjs`:
 
 | | rate |
 |---|---|
-| legitimate mail flagged | 0.55% |
+| legitimate mail flagged | 0.49% |
 | …called *dangerous* | 0.16% |
 | targeted scams missed | 0.00% |
 | Hinglish/Hindi scams missed | 0.00% |
@@ -41,6 +41,89 @@ validation accuracy went *down* on 2026-08-17 (second entry), from 94.94% to
 94.31%, and that was the point: the corpus it is measured against had no
 modern transactional mail in it at all, so the old number was partly scoring a
 blind spot. Read that entry before trying to win the 0.63 points back.
+
+## 2026-09-01 (closing the ambient solo-fire gate)
+
+Sreekar reported the extension was "quite bad" in actual use — false
+positives, on ordinary content, no screenshot surviving to anchor a specific
+case. Rather than start a new investigation, this picked up the one thread
+already pointing at exactly that failure mode: `tests/test_ambient.mjs`
+(added earlier today — see "why the false positives keep coming back" and
+the cold-audit entries above) was still red, with four rules solo-convicting
+real ambient text. Four rule fixes, one per agent in its own git worktree,
+merged sequentially and each audited against its actual diff (not just its
+self-report) before merging:
+
+**`advance_fee`** — the fee/send proximity check's `pay` alternative was
+missing the `\b` its two sibling branches already had, so "**charge**d to
+the tax**pay**ers" (a Libertarian Party press release on military spending)
+matched as two word fragments 12 characters apart, not a fee and a request
+to send it. One-character fix (`pay` → `pay\b`).
+
+**`delivery_redispatch_fee`** — its local `payment` check OR'd in `HI.fee`'s
+bare, unbounded Latin alternatives (`fee|charge|duty`) with no proximity
+gate, unlike every other call site of that constant. "fee" matched inside
+"helpful **fee**dback" in a Linux mailing-list reply, combined with "failed"
+matching inside "Cannot" for a false 2-of-3. Fixed by dropping the redundant
+bare Latin duplicates (already word-bounded on the line above) and keeping
+only the Devanagari alternatives, which were never the substring risk since
+`\b` doesn't treat them as word characters.
+
+**`investment_scam`** — two rows in `tests/ambient-seed.json` still
+solo-fired after this morning's topic-to-act conversion. A news report of a
+cyber-fraud arrest contained the exact promised-yield-near-instrument shape
+the rule looks for, just narrated in the third person about an already-caught
+scheme; a bank's own FD product page said "assured returns" through a
+leftover ungated alternative that bypassed the instrument gate entirely.
+Fixed with `FRAUD_CASE_REPORT_RE`, a plain exclusion on reporting language
+(arrested/police/convicted/etc.) checked first — a yield promise has no
+second-person form the way a threat does, so unlike `threat_of_consequence`'s
+reader-directed frame, direction can't be the signal here and exclusion is
+what's left — plus removing the bare `assured returns?` alternative, which
+cost nothing measured (that exact phrase appears nowhere, gated or not, in
+either training corpus). Audited independently: grepped both training
+corpora for every `FRAUD_CASE_REPORT_RE` term against label=1 rows and
+confirmed none of the hits were investment-pitch rows the rule was actually
+catching — the exclusion doesn't quietly drop real detection on anything in
+scope today. Residual, unmeasured risk worth naming: this is a rule-wide
+exclusion, so a scam that defensively name-drops "unlike those arrested
+fraudsters..." could in principle dodge it. Narrow and forward-looking, not
+a current regression — the corpus has no such row, and other rules still
+provide defense in depth.
+
+**`artificial_urgency`** — the lightest rule in the set (weight 1.2, the one
+that makes every rule's minimum solo-fire weight cross the warning
+threshold — see "why the false positives keep coming back" above), and
+correspondingly the hardest to fully zero out. Went from 6 solo-warns to 3
+(limit 4) via three narrow strips added to the rule's existing pre-filter
+pipeline: URLs (a domain like `http://urgent.rug.ac.be/` tripped "urgent" as
+a hostname substring with no sentence involved), "urgently needed" (a
+reporter's judgment about a shortage, not a countdown), and "X should
+immediately Y" (a third-party recommendation, not a directive at the
+reader). The 3 remaining solo-warns were left alone on purpose: two are
+marketing copy ("you must act now, this offer expires...", "collect your
+phone card immediately") structurally identical to real scam rows already in
+the corpus — tightening further would cost real detections — and one is a
+Belgian radio station's stylized name ("URGent") appearing as bare prose
+outside any URL, a one-off proper-noun homograph rather than a generalizable
+pattern.
+
+**Net result:** `tests/test_ambient.mjs` — all solo-fire gates pass (was 4
+failing). `tests/test_engine.mjs` — 324/324 (was 319; five new regression
+fixtures). `tests/test_holdout.mjs` — unchanged, all gates at 0%.
+`tests/test_benchmark.mjs` — false positive rate *improved*, 0.55% → 0.49%
+(dangerous unchanged at 0.16%), targeted scams missed unchanged at 0/345,
+Hinglish/Hindi missed unchanged at 0/200. `tests/test_parity.py` — unaffected
+(all four fixes are heuristic-only regex changes; none touch
+training data or text the model reads), still passing at the same 2.70e-07
+max delta.
+
+None of this closes finding 3 from the cold audit (no held-out scam corpus)
+— every number above, like every number in every entry before it, is still
+measured on data the model or the rules have effectively seen before. It
+narrows a different, real gap: the four rules fixed here were solo-convicting
+*legitimate* ambient text, which is closer to what "quite bad in actual use"
+reported than a missed-scam number would be.
 
 ## 2026-09-01 (cold audit)
 
