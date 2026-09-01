@@ -1404,6 +1404,45 @@ check(
   `fired: ${accountExpiry.reasons.map((r) => r.id).join(", ") || "none"}`
 );
 
+// "urgently" modifying "needed" is a reporter's judgment about a shortage,
+// not a countdown aimed at the reader — ambient false positive from a 2002
+// news-aggregator mailing list ("larger studies are urgently needed").
+const urgentlyNeeded = await analyzeLocal(
+  "Researchers say fresh clinical trial data is urgently needed before regulators can approve a wider rollout of the vaccine."
+);
+check(
+  "news calling for data that is urgently needed is not manufactured urgency",
+  urgentlyNeeded.verdict === VERDICT.SAFE &&
+    !urgentlyNeeded.reasons.some((r) => r.id === "artificial_urgency"),
+  `scored ${urgentlyNeeded.score}, fired: ${urgentlyNeeded.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+// "X should immediately Y" is a recommendation about a third party's future
+// action, not a directive at the reader — ambient false positive from a BBC
+// click-through ("the government should immediately announce...").
+const shouldImmediately = await analyzeLocal(
+  "Op-ed: the city council should immediately expand recycling collection to every neighborhood, community groups argue."
+);
+check(
+  "a third party being told what it should immediately do is not manufactured urgency",
+  shouldImmediately.verdict === VERDICT.SAFE &&
+    !shouldImmediately.reasons.some((r) => r.id === "artificial_urgency"),
+  `scored ${shouldImmediately.score}, fired: ${shouldImmediately.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+// A URL is an address, not prose — "urgent" inside a link's hostname is not
+// the reader being rushed. Ambient false positive from a mailing-list
+// signature linking a Belgian radio station, http://urgent.rug.ac.be/.
+const urgentInUrl = await analyzeLocal(
+  "This week's newsletter archive is up: http://urgent-updates.example.com/archive/12 has the full roundup."
+);
+check(
+  "the word urgent appearing only inside a URL is not manufactured urgency",
+  urgentInUrl.verdict === VERDICT.SAFE &&
+    !urgentInUrl.reasons.some((r) => r.id === "artificial_urgency"),
+  `scored ${urgentInUrl.score}, fired: ${urgentInUrl.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
 // Police verification is a step in getting a passport, not a threat.
 const passport = await analyzeLocal("आपका पासपोर्ट आवेदन स्वीकृत हो गया है। पुलिस सत्यापन के बाद पासपोर्ट भेजा जाएगा।");
 check(
