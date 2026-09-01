@@ -13,13 +13,13 @@ Last updated **2026-09-01**.
 | Archive | `github.com/sreekarseera/baitwatch-archive` (private, the original 32-commit history) |
 | Detection | 24 heuristics + URL analysis + brand impersonation + on-device classifier |
 | Model | 3,603 rows, 94.31% validation, 93.81% ±0.88% five-fold CV, 6,000 terms, 263.9 KB |
-| Tests | 284 engine checks, model parity (tokens + predictions), 5 accuracy gates, 3 held-out gates, 29 adapter checks, 20 browser checks |
+| Tests | 319 engine checks, model parity (tokens + predictions), 5 accuracy gates, 3 held-out gates, 29 adapter checks, 20 browser checks |
 
 Measured accuracy, from `node tests/test_benchmark.mjs`:
 
 | | rate |
 |---|---|
-| legitimate mail flagged | 0.93% |
+| legitimate mail flagged | 0.55% |
 | …called *dangerous* | 0.16% |
 | targeted scams missed | 0.00% |
 | Hinglish/Hindi scams missed | 0.00% |
@@ -41,6 +41,393 @@ validation accuracy went *down* on 2026-08-17 (second entry), from 94.94% to
 94.31%, and that was the point: the corpus it is measured against had no
 modern transactional mail in it at all, so the old number was partly scoring a
 blind spot. Read that entry before trying to win the 0.63 points back.
+
+## 2026-09-01 (cold audit)
+
+**Asked for an audit by agents with no session context, reading directly from
+git — because everything above this entry was produced and checked by the same
+session that wrote it.** Found and fixed one process bug before the audit could
+start: `d7c9bca` was titled "Merge B2: per-rule solo-fire gate" but had one
+parent and contained no B2 files — a `git stash` ran mid-merge and swallowed the
+staged files, and the following commit landed only an unrelated `PROGRESS.md`
+edit under the merge's message. Repaired by resetting past it, re-committing
+that edit honestly, and properly merging B2's real branch
+(`worktree-agent-a2dcd8eb7a7de7b5a` at `d008b3b`, tests-only, no conflicts).
+Re-measured the true merge point afterward — post-merge numbers for the two
+parallel branches (the no-ask cap below and the act-shaped rule rewrites)
+matched their individual pre-merge claims exactly, so the parallel work combined
+cleanly.
+
+Five independent auditors then read the merged tree (blind to this file and to
+commit messages) plus two more against the archive repo. One auditor
+(detection-logic) was seeded with a known bug it wasn't told about, as a
+calibration check — it found it independently before being stopped, so the
+audit's sensitivity is real, not assumed.
+
+**Confirmed, ranked by severity:**
+
+1. **`gift_card_payment`'s proximity gate has been dead since before today.**
+   `GIFT_CARD_ASK_RE.source` is spliced into the composed pattern unwrapped
+   (`heuristics.js:347-348`); its top-level `|` leaks out of the composition, so
+   the rule degenerates to "gift-card noun anywhere AND ask verb anywhere" with
+   no proximity check at all. At weight 3.0 it also bypasses today's no-ask cap.
+   `analyzeHeuristics("Thanks for the gift card! I will send you the photos from
+   the party later this week.")` fires it. Fixed below.
+
+2. **The no-ask cap's verb list cuts both ways.** A blind behavioral-delta pass
+   ran 117 constructed inputs through this HEAD and `ebe714f` and diffed every
+   verdict. The cap (see the entry below) correctly kills 10+ topic-only false
+   positives with no counterexamples of it hiding an actionable scam that had no
+   ask at all — but `ACTION_REQUEST_RE`'s verb list is both under- and
+   over-inclusive, and because it now gates both the cap *and* the older
+   no-action-requested score discount, one miss does double damage:
+   - Missing ordinary asks: *"please **tell** me the OTP you just received"*
+     (an unambiguous phishing message) dropped from dangerous (77) to suspicious
+     (36); *"**Join** our VIP Telegram group and **start trading** today"*
+     dropped from 81 to 58.
+   - Bare-matching idiom/passive collisions: `verif\w*` matches "has been
+     successfully **verif**ied" (passive, not an ask), pushing an ordinary
+     Income Tax refund-status notice from safe (16) to suspicious (37). Bare
+     "forward" matches "going **forward**", nearly tripling a benign note's
+     score (4 → 24, still safe but a real signal jump).
+   Fixed below.
+
+3. **No held-out scam data exists anywhere in the repo.**
+   `tests/holdout-legit.csv` and `holdout-pages.json` are genuinely clean of
+   training overlap (confirmed by grep), but both are legitimate-only. There is
+   no `tests/holdout-scams.csv` equivalent, so nothing measures miss-rate
+   against scam phrasing the model has never seen — every "scams missed" number
+   in this file, including the ones two sections below, is measured on curated
+   rows ~82% of which are literally in the model's own `X_train` split
+   (measured: 284/345). This is a data-collection gap, not a code bug — logged
+   under Next, not fixed today.
+
+4. **`extractUrls`/`extractEmails` in `extension/lib/text.js` are O(n²)** on
+   adversarial input — measured ~580ms / ~450ms at the 20,000-char page-text
+   cap, clean 4x-per-doubling growth confirming quadratic backtracking, not
+   exponential. Runs in the MV3 service worker on attacker-controlled page text
+   from a content script matching `<all_urls>`; realistic scam text measures
+   under 1ms, so this needs deliberately adversarial padding to trigger, not
+   ordinary content. Fixed below.
+
+5. **The model sees raw text; the rule engine sees confusable/leetspeak-folded
+   text.** `model.js`'s `classify()` tokenizes raw input; `heuristics.js`
+   normalizes first. An obfuscated brand/action word (`acc0unt`, Cyrillic
+   `раypal`) is invisible to the model's vocabulary while the same text still
+   matches heuristic keyword rules after folding — a reduction in the model's
+   contribution near the threshold for exactly the pretext-only messages it was
+   retrained to help with, not a guaranteed bypass since the rules still see it.
+   Fixed below (folds before the model tokenizes, same as the rules already do).
+
+**Checked and clean:** `all_frames: false` is a documented, deliberate tradeoff
+(`docs/STORE_LISTING.md` covers it; iframe content is instead reachable through
+the right-click "check this text" context menu) — not an oversight. Every
+declared permission has a real call site, none unused. The archive sweep
+confirmed the three former teammates' names (never committed as git identities,
+only as first names in file content) are absent from the public repo's commits,
+blobs, issues, PRs, and collaborator list. Nothing in the 32-commit V1 archive
+was worth porting — every candidate either already exists in V2's corpus/rules
+(often more richly) or was already fixed better in V2.
+
+## 2026-09-01 (closing the cold audit)
+
+Findings 1, 2 and 4 above are fixed and verified against the corpus; finding
+5 is fixed but revised from what the audit entry proposed, and finding 3 is
+left as logged (a data-collection gap, not a code bug).
+
+**1 — `gift_card_payment`'s dead proximity gate.** `GIFT_CARD_ASK_RE.source`
+and `GIFT_CARD_RE.source` are now wrapped in `(?:…)` where they're spliced
+into `GIFT_CARD_PAYMENT_RE`, so the top-level `|` inside each no longer
+leaks out of the composition. The finding-1 example
+(`analyzeHeuristics("Thanks for the gift card! I will send you the photos
+from the party later this week.")`) now scores 0 with no signal, was 3.0.
+
+**2 — the no-ask cap's verb list.** `verify\w*` is gated on a direct object
+(`verify\w*\s+(?:your|the|this|it|my)`) so it stops matching the passive "has
+been successfully verified"; `forward` is gated the same way `sharing` was
+(`forward(?:ing)?\s+(?:it|this|to|the|your|my)`) so it stops matching "going
+forward"; `tell\s+(?:me|us)` and `start\s+trading` were added to close the
+two missed-ask examples from the finding. `join` was deliberately **not**
+added — 30 legitimate corpus rows read "Join our free webinar" / "Join the
+Fun at EFF's VIP Party" in the identical shape to the missed scam's "Join our
+VIP Telegram group", so a `join` branch would reopen the exact topic-vs-act
+trap this whole audit exists to close; `start trading` is the narrower,
+unambiguous act in the same sentence and has zero corpus collisions.
+Re-measured: `tell me the OTP you just received` moves from 36 (the finding's
+reported broken value) back to 57 on heuristics alone; the finding's other
+three examples were spot-checked directly (`noAsk` now correctly `false` for
+each) rather than re-run through the full 117-input behavioral-delta pass.
+
+**4 — `extractUrls`/`extractEmails`.** Restructuring the domain pattern from
+`X*\.X` to `(?:X\.)+X` (so a loop iteration can't be reread as the required
+final segment) turned out to remove the *ambiguity* but not the *cost*:
+`.match()` retries the whole pattern at every failing start position, and an
+unbounded loop still does O(n) work at each one — still ~580ms/~430ms,
+unchanged. What actually fixes it is bounding the quantifiers, which is free:
+a DNS label is capped at 63 octets, a domain has no real reason to exceed 10
+labels, and RFC 5321 caps a local part at 64 octets. Bounded, both are
+~1–13ms at 20,000–40,000 characters and scale linearly, confirmed by doubling
+the input. Every URL/email extracted from the existing corpus is unchanged
+(spot-checked, not exhaustively diffed).
+
+**5 — model sees raw text, rules see folded text — revised.** The proposed
+fix ("fold before the model tokenizes, same as the rules already do") is
+wrong as literally stated. `normalize()`'s digit fold (`0`→`o`, `1`→`l`, …)
+exists so a heuristic rule can't be dodged by writing `8000` as `8ooo` — it
+was never validated against the model's vocabulary, which is frozen from
+training text that was never digit-folded. Folding digits before the model
+tokenizes turns real, weighted vocabulary terms (an amount, an OTP — `1500`
+is a term the model knows) into vocabulary the model has never seen (`lsoo`
+is not). Measured on the full corpus: corpus-wide false negatives rose from
+515/1769 to 525/1769 for no offsetting gain, because neither of the finding's
+two motivating examples (`acc0unt`, Cyrillic `раypal`) needs the digit fold —
+Cyrillic-confusable and styled/accented Latin are both handled by NFKD plus
+the confusables table alone.
+
+Fixed instead: `foldConfusables()` takes a `substituteDigits` option
+(default `true`, unchanged for every existing caller — the rules) and
+`model.js` calls it with `substituteDigits: false`. Re-measured: corpus
+numbers are back to exactly the pre-change baseline (515/1769 FN, 10/1834
+FP), and the model now treats `раypal`/`аccount` (Cyrillic homoglyphs)
+identically to plain `paypal`/`account` — spot-checked directly, not run
+through the full corpus, since neither example exists in the corpus as
+written. `acc0unt`-style digit leetspeak is a **known, deliberately unfixed**
+gap for the model specifically (the rules still catch it, via `normalize()`'s
+existing digit fold) — closing it would need the training pipeline itself to
+learn digit-folded terms, which is a retraining change, not a bug fix.
+
+This reopened `tests/test_parity.py`, which is the load-bearing gate for
+exactly this kind of divergence: it compares `classify()`'s predictions
+against `pipeline.predict_proba()` on **raw** text and now finds real,
+expected disagreement (up to Δ=0.23) on the EDGE_CASES that exercise
+accented/styled/CJK text, because one side folds and the other doesn't. The
+gate is doing its job — the fix is to make the Python side fold the same way
+before scoring, not to weaken the gate. That port (reusing
+`tools/build_confusables.py`'s table so the two sides can't drift) is
+sitting with a worktree agent; `tests/test_engine.mjs`,
+`tests/test_holdout.mjs` and `tests/test_benchmark.mjs` all pass at this
+commit — only `test_parity.py`'s prediction comparison is red, and only for
+the reason above.
+
+That port is done: `tests/fold_confusables.py` parses the same 273-entry
+table straight out of the generated `extension/lib/confusables-data.js`
+(rather than hand-copying it, which is exactly the kind of drift this test
+exists to catch) and replicates `foldConfusables(text, {substituteDigits:
+false})` — NFKD, fold, lowercase, strip combining marks — so
+`test_parity.py` now folds each text before handing it to
+`pipeline.predict_proba`, matching what `model.js` does before it
+tokenizes. `python3 tests/test_parity.py` passes clean: 0 tokenizer
+disagreements, 0 predictions over tolerance, largest disagreement 2.70e-07
+against the 1e-4 tolerance (floating-point rounding noise, not a real
+divergence). The other three suites are unchanged at the numbers above.
+
+**Not done — finding 3.** No `tests/holdout-scams.csv` exists; every miss-rate
+number this file reports, including the ones above, is still measured on
+data ~82% of which the model trained on. Data-collection work, not a code
+fix — unchanged from the audit entry.
+
+## 2026-09-01 (the no-ask cap)
+
+**Promoted `no_action_requested` from a −0.8 nudge to a hard cap, and the
+interesting half turned out to be the audit rather than the cap.** The entry
+below proposed this and measured it at +5 false positives removed for 1 curated
+scam lost. Both numbers were artefacts of the verb list being incomplete: the
+list was missing so many ask verbs that it read *17* curated scams as asking for
+nothing, and it read enough legitimate mail the same way to look like a bigger
+precision win than it is.
+
+**The rule now caps rather than discounts.** Text that names no action for the
+reader and carries no link cannot push its *rule* contribution past
+SUSPICIOUS_AT, unless a rule at or above `CONCLUSIVE_AT` (2.4) fired —
+`gift_card_payment` 3.0, `upi_collect_request` 2.6, `payment_detail_change` 2.5,
+`crypto_transfer` 2.4, `family_emergency` 2.4, plus `lookalike_domain` 3.0,
+`brand_impersonation` 2.6, `userinfo_url` 2.4 and `urlhaus_match` 4.0 from the
+other layers. Those three are academic: each needs a URL to exist, and the cap
+already does not apply where there is one.
+
+The bar is deliberately above the 2.0 that `analyzeHeuristics` uses to withhold
+its exonerating discount, and the gap is the design. 2.0–2.3 is where the
+topic-shaped heavy rules sit — `investment_scam`, `windfall_solicitation`,
+`credential_request`, `advance_fee` — and those are exactly what the cap is for.
+So `noAsk` is computed *outside* the `hasSevere` gate; computing it inside would
+have switched the cap off for every rule it was meant to hold back.
+
+**Not a corroboration requirement.** One rule still convicts alone, and the
+regression set now pins that: a single `crypto_transfer` on text with no ask and
+no link still scores 100. No count of signals appears in the condition.
+
+**The cap binds the rule score, not the final score, and that was measured
+rather than assumed.** Capping the final score scores identically on false
+positives (15/1834 either way) and costs 29 corpus scams the model was catching
+alone — three of them classic advance-fee letters, which the corpus stores
+truncated at 1,200 characters, so the request really has been cut off and "names
+no action" is a true statement about the text. `MODEL_MAX_PULL` was raised to 50
+in a measured decision precisely so the model could warn on text that trips no
+rule; the model is not a rule, and silencing it here bought nothing.
+
+**The verb audit is where the recall came from.** Against every scam row in
+`curated.csv` and `curated-hinglish.csv`, 30 rows named an action the list could
+not see, 17 of them convicted by nothing else. The recurring shape is the one
+this file has now written down three times: *the presence-based rules already
+knew the verb and the absence-based rule did not.* `provide`, `submit`, `enter`
+are in `CREDENTIAL_ENTRY_RE`; `buy`, `redeem`, `pay` in `GIFT_CARD_ASK_RE`;
+`accept`, `approve`, `scan` in `upi_collect_request`; `reschedul` in
+`delivery_redispatch_fee`. Plus the word-form bugs: `\bshare\b` never matched
+"sharing", `\bpay\b` never matched "paying", and `reschedul\b` can never match
+"reschedule" at all. On the Hinglish side `kar(?:iye|ein|o)` covered three of
+about ten real spellings of the imperative of *karna* — "kijiye" and "karwaiye"
+both went unseen, and both are in the corpus — and Latin "bhar" was missing
+while Devanagari भर was present.
+
+**Four candidate verbs were tried and removed on measurement**, which is the
+part worth keeping: `press` matched "PRESS RELEASE" in a 2002 mailing-list post
+and was the only thing keeping it out of the cap; bare `update` matched a
+newsletter's "product updates"; `sign up` matched an EFF subscribe footer;
+Devanagari `दर्ज` matched "पुलिस ने मामला दर्ज किया है", a filed case being
+*reported*, which `threat_of_consequence` reads as a threat — the two rules
+would have cancelled on every Hindi crime report. `sharing` needed a determiner
+or it matched "music sharing", and `bhar\w*` had to be enumerated or it
+swallowed "Bharat".
+
+**Result: corpus false positives 0.93% → 0.82% (17 → 15), 0 added; corpus false
+negatives 25.78% → 25.49%, 0 newly missed and 5 newly caught; targeted scams
+missed 0/345 unchanged; Hinglish/Hindi 0/200 unchanged; held-out 0/66 and
+0/16 unchanged.** Both directions improved, which is not the tradeoff the
+proposal below expected. 22 more regression fixtures (287 → 309), covering both
+directions: four topic-rule false positives that must now stay silent, eight
+Hinglish/Devanagari/English scams whose only ask is a verb the audit added, and
+the conclusive-rule exemption.
+
+**What this does not fix.** The two false positives it removes are 2002
+mailing-list posts, and the point of the entry below is that the corpus contains
+none of the text the extension actually reads. The cap is aimed at the LinkedIn
+feed post and the news article; there is still nothing in any test set that
+resembles those, so this remains a fix measured against data that cannot contain
+the failure it targets.
+
+## 2026-09-01 (the three worst topic-rules, converted)
+
+**Acting on the diagnosis in the entry below: the three rules at the top of its
+solo-conviction table are now act-shaped.** No new rule, no new category, no
+two-signal requirement — each of the three keeps its tactic, its weight and its
+`why`, and gains the structure it was missing.
+
+Solo convictions on the 1,834 legitimate corpus rows (one rule fired, nothing
+corroborated it, the user got a banner):
+
+| rule | solo-warns | fires at all |
+|---|---|---|
+| `investment_scam` | 10 → **0** | 12 → **0** |
+| `impersonated_authority` | 8 → **0** | 75 → **3** |
+| `threat_of_consequence` | 7 → **0** | 66 → **1** |
+| all rules, total | 34 → **13** | |
+
+**The solo metric was hiding most of the damage, and the real number is worse
+than the table above.** `impersonated_authority` included `HI.police`
+wholesale, and `threat_of_consequence` matched the same word from its own
+alternation, so a news report of an arrest tripped *both* — `signals.length`
+was 2, and the row vanished from a metric that only counts rules firing alone.
+Two topic-rules reading one noun corroborate each other. Counted properly:
+
+| legitimate rows … | before | after |
+|---|---|---|
+| where any of the three fires | 118 | **4** |
+| where two or more fire together | 34 | **0** |
+| **warned, with no rule outside the three firing** | **57** | **0** |
+
+Corpus false positives 0.93% → **0.55%**, dangerous unchanged at 0.16%,
+targeted scams missed 0/345, Hinglish/Hindi 0/200, held-out 0/66 and 0/16.
+**Zero curated scams lost** — all 345 still convict, and the heuristic layer
+alone still flags the same 320 of them it did before.
+
+**`investment_scam` — the instrument is the topic, the promised yield is the
+act.** Its last branch was the rule's original design: `(invest|trading|stock|
+share|mutual fund|scheme|ipo)` anywhere in the message AND `(money|profit|
+return|scheme)` anywhere else in it, ungated. That conjunction produced 10 of
+the rule's 12 fires and every one of its solo warnings — Python threads where
+the "scheme" is a naming scheme and the "return" is a return value, a NYTimes
+piece on a firm that "does invest in promising new companies", a press release
+headlined "GOVERNMENT REGULATION IS KILLING THE STOCK MARKET". A fund reports
+what it returned; it never offers you a fixed or daily one. So a qualifier
+(`fixed|daily|monthly|guaranteed|assured|double|multibagger`) must sit within
+25 characters of a yield noun, either order, and the instrument must sit in the
+same sentence as that promise. The instrument gate is not decoration: without
+it, "the accessor returns a fixed-size buffer" satisfies the promise half on
+its own, on a corpus where the other half of the rule is the word Scheme.
+Two curated Devanagari rows leaned on the old conjunction and are carried by
+the new one — "क्रिप्टो में इन्वेस्ट करें … फिक्स्ड रिटर्न" and, because the
+promise pattern runs in both directions where the old Devanagari branch ran in
+one, "IPO प्री-लिस्टिंग एलॉटमेंट गारंटी".
+
+**`impersonated_authority` — naming an authority is not the tactic; claiming to
+be one is.** `federal` appears in 9 of the legitimate rows and `government` in
+36, and all eight solo warnings came from those two words. The named agencies
+(`irs`, `hmrc`, `trai`, `rbi`, `income tax`, `cyber cell`, and the named
+support desks) stay ungated — they appear once or not at all, and nothing
+routinely writes to you about HMRC. The generic nouns now need a claim of
+being the sender within 30 characters *before* them: "Hi, this is Instagram
+security team". One-directional on purpose — a bidirectional window reads "a
+confiscatory government boondoggle, expropriated from the original owners" as a
+claim, on the "from" that follows it. `security team`, `fraud department` and
+`tech support` appear in none of the false positives and are gated anyway,
+because a 2002 mailing-list corpus cannot contain the modern security notice
+that would prove them wrong; that blind spot is the subject of the entry below.
+
+**`threat_of_consequence` — the threat has to land on the reader.** Its nouns
+are the ordinary vocabulary of news: `fine` in 20 legitimate rows, `court` in
+13, `police` in 10, `arrest` in 9, and the seven solo warnings are "A-level
+student sues for £100,000", "Two in court on IRA spy charges", "Freedom deal
+for Real IRA man … two more years in jail", and "Another fine mess I've got
+myself into", where *fine* is an adjective. The consequence now has to share a
+sentence with a frame that puts it on you — something to avoid or face, issued
+against you or in your name, or following if you do not pay. Bare "you" is
+deliberately not such a frame: one of the false positives puts it 22 characters
+from "court" ("I'd have had them in the small claims court quicker than you
+could drop LOTR on your foot"). "Take legal action" is likewise absent while
+"will be taken" is present, because the news row reports someone else taking
+it. `challan` is the one term left ungated, and it is the eight-row exception
+that justifies the rest: the e-challan family is a payment link rather than a
+threat, satisfies no frame at all, appears in zero legitimate rows, and — unlike
+"fine" — is never anything but a penalty.
+
+**`HI.police` is split, and two of its Latin entries were outright bugs.** One
+alternation was serving both rules, which is part of why both were
+topic-shaped: a message claiming to be the police and a message threatening
+police action are different tactics. It is now `policeLatin` and
+`policeDevanagari`, split on false-positive risk rather than on `\b` (the axis
+`urgentLatin`/`urgentDevanagari` is split on). The Devanagari half is ungated
+in both rules — every term is an Indian agency name, none appears in any
+legitimate row, and each is already the act. The Latin half is gated in both,
+and lost two entries to the bare-substring bug that `वारंट(?!ी)` and
+`कस्टम(?!र)` already document: `warrant` had no word boundary and matched
+inside **warranty**, so a genuine "your laptop warranty claim" fired the threat
+rule; `\bed\b`, meant to be the Enforcement Directorate, matched the name
+**Ed** in 16 of the 1,834 legitimate rows, the largest single contributor to
+`impersonated_authority`'s 75 fires. It now needs the agency context a real
+message gives it ("ED officer bol raha hoon").
+
+**Corpus-wide false negatives went 25.78% → 29.34%, and that is the expected
+shape of this change rather than a regression to win back.** The 135 rows are
+2002 commercial spam — extended auto warranties (the `warranty` bug, firing a
+*criminal threat* rule on a car warranty ad), inkjet cartridges, e-book
+publishing software, "LazyTraders: $449,000 on Wednesday". Not one of them
+contains phishing vocabulary; measured, zero of the 135 mention a password, an
+OTP, a suspended account or a credential of any kind. They were being caught
+because they discuss money and the law, which is exactly the reading this
+change removes, and they are the class the tool deliberately does not warn
+about (see the 2026-08-17 entry).
+
+**Four new regression fixtures on the LEGIT side and three on the SCAM side**
+(284 → 297 checks): a financial newsletter reporting quarterly returns, a news
+report of an arrest, a mailing-list thread about someone else's lawsuit, a
+political thread about government policy — and, so the conversions cannot be
+satisfied by simply switching the rules off, an investment pitch promising a
+fixed daily return without ever saying "guarantee", a support-desk impersonation
+naming no company, and a debt threat aimed at the reader.
+
+`python3 tests/run_all.py` passes every suite. The browser smoke test skips —
+branded Chrome 137+ refuses `--load-extension` and Chrome for Testing is not
+installed here — so that layer is unverified rather than passing.
 
 ## 2026-09-01 (why the false positives keep coming back)
 

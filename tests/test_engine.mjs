@@ -70,6 +70,47 @@ const SCAMS = [
    "Credit card reward points worth 9,750 expiring today. Redeem now by sharing the confirmation code you receive on SMS."],
   ["guaranteed-return investment pitch, plural verb",
    "Dear investor, our advisory group guarantees 40 percent monthly returns on crypto. Start with a small deposit and withdraw anytime."],
+  // The other half of the three 2026-09-01 conversions: the same topics as the
+  // LEGIT rows below, but performing the act each rule is named for. The
+  // investment pitch never uses the word "guarantee", so it exercises the
+  // promised-yield branch that replaced the ungated conjunction.
+  ["investment pitch promising a fixed daily return, no \"guarantee\" in it",
+   "Join our trading group and earn a fixed daily profit of 3% on your capital. Minimum deposit to start is 10,000 rupees — send it to the UPI ID below and your account is activated today."],
+  ["support-desk impersonation naming no company agency",
+   "Hello, this is the security team. We are contacting you about unusual sign-in attempts. Reply with the verification code we just sent so we can lock the intruder out."],
+  ["debt threat aimed at the reader",
+   "FINAL NOTICE. Your outstanding balance remains unpaid. If you do not settle today, legal action will be initiated and a warrant issued against you. Pay here: secure-settle.co/pay"],
+  // The other half of the no-ask cap (see engine.js). Each of these asks for
+  // something, carries no URL, and fires only rules below the 2.4 conclusive
+  // bar — so each one is convicted solely by ACTION_REQUEST_RE seeing the ask.
+  // A verb dropped from that list turns any of them silently safe, which is the
+  // failure mode the cap makes expensive. Every one of these is a row from
+  // curated.csv or curated-hinglish.csv that the pre-audit verb list could not
+  // see the ask in.
+  ["Hinglish KYC threat — the ask is the imperative \"kijiye\", not the word \"update\"",
+   "Aapka KYC expire ho gaya hai. Turant update kijiye warna account band ho jayega."],
+  ["Hinglish customs fee — \"bharkar\" and \"karwaiye\", neither an English verb",
+   "Aapka parcel customs me ruka hua hai. Clearance fee bharkar release karwaiye."],
+  ["Devanagari remote-access lure — the ask is \"शेयर कीजिए\"",
+   "आपके प्रिंटर ड्राइवर में गड़बड़ी की शिकायत मिली है HP सपोर्ट को, फ्री रिपेयर के लिए AnyDesk कोड शेयर कीजिए हमारे तकनीशियन के साथ।"],
+  ["Devanagari SIM-deactivation threat — the ask is the IVR \"9 दबाएं\"",
+   "यह TRAI से सूचना है, आपके नाम पर 9 सिम कार्ड एक्टिव हैं जो नियम विरुद्ध है, 2 घंटे में नंबर डिएक्टिवेट हो जाएगा, e-KYC के लिए 9 दबाएं।"],
+  ["parcel redispatch — the whole ask is \"Reschedule\", which \\breschedul\\b can never match",
+   "Amazon: Your package cannot be delivered. Reschedule here."],
+  ["419 letter — the ask is \"respond with\", not the \"reply with\" the list knew",
+   "I am a widow with terminal illness wishing to donate my late husband's fortune to you. Kindly respond with your details."],
+  ["fake ISP — the ask is \"give us\", gated on the indirect object",
+   "We are from your internet provider. Your router is compromised. Give us remote access to fix it or your connection will be disconnected."],
+  ["job advance fee — the ask is \"paying\", which \\bpay\\b cannot match",
+   "Earn from YouTube likes! Get paid per video. Join by paying a one time membership of 250 only."],
+  // The cap's escape hatch, and the invariant underneath it. This names no
+  // action at all ("double" is not an ask) and carries no link, so the cap
+  // would hold it under 35 — except crypto_transfer is 2.4, at or above
+  // CONCLUSIVE_AT, and a conclusive rule is exempt. It is also a single rule
+  // convicting alone with nothing corroborating it, which must keep working:
+  // 62% of the scams this tool catches rest on one rule.
+  ["conclusive rule alone, with no ask and no link, is exempt from the cap",
+   "Double your Bitcoin in 24 hours. Wallet address below, offer expires today."],
 ];
 
 for (const [name, text] of SCAMS) {
@@ -135,6 +176,42 @@ const LEGIT = [
    "Congratulations to the whole team on being shortlisted for the design award — the ceremony is on the 14th and I hope everyone can make it."],
   ["hindi congratulation on an exam result",
    "बधाई हो! आपने बोर्ड परीक्षा में बहुत अच्छे अंक प्राप्त किए हैं। आपके उज्ज्वल भविष्य की शुभकामनाएं।"],
+  // The three topic-shaped rules converted on 2026-09-01. Each of these
+  // discusses the rule's topic at length and asks the reader for nothing, which
+  // is the distinction the old bare alternations could not draw — they warned
+  // on 57 of the 1,834 legitimate corpus rows between them. See
+  // docs/PROGRESS.md.
+  //
+  // investment_scam used to be (invest|stock|scheme|ipo) anywhere AND
+  // (money|profit|return|scheme) anywhere, ungated, so any financial writing
+  // tripped it. Now it wants a *promised* yield next to the instrument.
+  ["financial newsletter discussing stocks and returns with nothing on offer",
+   "Market Notes, week 14. The fund's portfolio returned 4.1% over the quarter, trailing the index by roughly 60 basis points. We continue to invest in mid-cap industrials, and the IPO window looks likely to reopen in the second half. As always, past performance is no guide to future returns and every investment carries risk. Reply to this note if you would like the full holdings table."],
+  // threat_of_consequence used to be a bare alternation of
+  // arrest|court|police|fine|jail, which is the ordinary vocabulary of news.
+  // Now the consequence has to be aimed at the reader.
+  ["news report of an arrest, addressed to nobody",
+   "Six arrested for attacking Palio jockey. Police in Siena said the six men, all aged between 19 and 34, will appear in court next month on charges of assault. A lawyer for the accused said his clients deny any wrongdoing, and a fine of up to 3,000 euros is possible if they are convicted."],
+  ["mailing-list thread about legal action someone else is taking",
+   "Re: Defending Unliked Speech. Robert writes: here's hoping the tradition perseveres for the novelist currently on trial in Paris. The suit was filed by four Islamic organisations and a human rights group, and the prosecution has asked for a suspended sentence rather than jail."],
+  // impersonated_authority used to include a bare federal|government, so any
+  // political thread tripped it. Now the message has to claim to *be* the
+  // authority.
+  ["political mailing-list thread about government policy",
+   "Re: the broadband bill. The government's own regulator admits the rollout targets were never realistic, and the federal subsidy programme has been reannounced three times. Worth reading the committee transcript before Thursday's call — I'll circulate the link."],
+  // The no-ask cap (see engine.js). Each of these is a topic-shaped rule
+  // faithfully reporting its topic in text that asks the reader for nothing and
+  // carries no link — the class docs/PROGRESS.md 2026-09-01 identifies as the
+  // source of the recurring false positives. Scores before the cap are in the
+  // labels; each one is a real corpus row or a close paraphrase of one.
+  ["mailing-list thread about arrests — threat_of_consequence reporting a topic (was 30)",
+   "Six arrested for attacking Palio jockey. The court in Siena heard that police detained the group after the race; a fine of 2,000 euros was imposed on the stable. Thread continues from last week's digest."],
+  ["think-tank press release on market regulation — was 67, \"dangerous\"",
+   "GOVERNMENT REGULATION IS KILLING THE STOCK MARKET. Press release from the Ayn Rand Institute, Irvine CA. Federal securities rules have destroyed investor confidence and depressed returns across the market, argues a new commentary."],
+  ["mailing-list post that happens to say \"security team\" and \"government\" — was 43",
+   "[Spambayes] Deployment. FYI, I'll never trust such a scheme: I have no idea what the security team would say about it, and the government would probably have opinions too. Anyway, that was my two cents."],
+  ["hindi crime report — a filed case is a fact being reported, not a threat made to you (was 49)",
+   "पुलिस ने मामला दर्ज किया है और जांच जारी है। साइबर सेल के अधिकारियों ने बताया कि यह गिरोह पिछले साल से सक्रिय था।"],
 ];
 
 for (const [name, text] of LEGIT) {

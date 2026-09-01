@@ -3,11 +3,41 @@
 
 import { CONFUSABLES, CONFUSABLE_RE } from "./confusables-data.js";
 
-const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+// The domain half of both patterns below used to be `[a-z0-9.-]+\.[a-z]{2,}`
+// (email) / `(?:\.[a-z0-9-]+)*\.[a-z]{2,}` (URL): a `*`/`+` immediately
+// followed by a required suffix built from the same character class. On text
+// with no valid ending (no real TLD), quadratic backtracking, confirmed at
+// ~580ms/~450ms on the 20,000-char page-text cap with adversarial padding
+// (2026-09-01 audit, finding 4).
+//
+// Restructuring to `(?:label\.)+tld` — so a loop iteration can't be reread as
+// the final segment — removes the *ambiguity* but not the cost: `.match()`
+// retries the whole pattern at every one of the ~n starting positions the
+// first attempt fails from, and an unbounded loop still does ~n work at each
+// one, which is O(n²) again however unambiguous the loop body is (measured:
+// still ~580ms/~430ms after that change alone). The only fix that changes
+// the complexity is bounding the quantifiers, which real domains already
+// obey — a DNS label is capped at 63 octets and this tool has no reason to
+// recognize a domain no browser would resolve. `{0,61}` (+2 required chars
+// = 63) per label, `{1,10}` labels (real domains rarely exceed 4–5), `{2,24}`
+// for the TLD (longest real one, `xn--vermgensberatung-pwb`, is 24). Bounded
+// quantifiers cap the retry cost per starting position at a constant, so the
+// whole scan is back to O(n).
+const DOMAIN_RE_SRC = "(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\\.){1,10}[a-zA-Z]{2,24}";
+// The local part is unbounded for the same reason the domain loop was: on
+// text with a "." run and no "@" ahead, the greedy class (it includes ".")
+// swallows everything and then backs off one character at a time hunting for
+// an "@" that never comes — O(n) at every starting position, O(n²) overall,
+// and bounding the domain loop alone left this measured at ~430ms unchanged.
+// RFC 5321's local-part limit is 64 octets; `{1,64}` matches every real
+// address and caps the retry.
+const EMAIL_RE = new RegExp(`[a-zA-Z0-9._%+-]{1,64}@${DOMAIN_RE_SRC}`, "g");
 
 // Matches http(s) URLs and bare domains like "secure-login.co/verify".
-const URL_RE =
-  /\b(?:https?:\/\/|www\.)[^\s<>"')]+|\b[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?:\/[^\s<>"')]*)?/gi;
+const URL_RE = new RegExp(
+  `\\b(?:https?:\\/\\/|www\\.)[^\\s<>"')]+|\\b${DOMAIN_RE_SRC}(?:\\/[^\\s<>"')]*)?`,
+  "gi"
+);
 
 const PHONE_RE = /(?:\+?\d[\d\s().-]{7,}\d)/g;
 
@@ -57,21 +87,34 @@ const COMBINING_MARKS = /[̀-ͯ]/g;
  * Unicode's twins are case-sensitive and folding them the other way round
  * loses that. Cyrillic В is identical to Latin B while в is not identical to
  * b, and only a case-sensitive fold can say so.
+ *
+ * `substituteDigits` defaults on for the heuristic rules, which is what every
+ * caller except the model wants: it's the reason `normalize()` "folds digits
+ * onto letters to defeat homoglyphs" (8000 reaches a rule as 8ooo — see the
+ * note on ACTION_REQUEST_RE's callers). model.js passes `false`. Its TF-IDF
+ * vocabulary is frozen from training text that was never digit-folded, so an
+ * amount or OTP like "1500" is a real, weighted vocabulary term — folding it
+ * to "lsoo" before tokenizing doesn't recover a brand name, it just turns a
+ * term the model knows into one it has never seen. Measured on the full
+ * corpus: folding digits before the model tokenizes raised false negatives
+ * from 515/1769 to 525/1769 for no offsetting gain, because the two
+ * obfuscation styles the model actually needed help with — styled/accented
+ * Latin and Unicode-confusable letters (𝐩𝐚𝐲𝐩𝐚𝐥, раypal) — are both handled
+ * by NFKD and the confusables table alone.
  */
-export function foldConfusables(text) {
-  return text
-    .normalize("NFKD")
-    .replace(CONFUSABLE_RE, (ch) => CONFUSABLES.get(ch) ?? ch)
-    .replace(/[013457@$]/g, (ch) => ASCII_SUBSTITUTIONS[ch] ?? ch)
-    .toLowerCase()
-    .replace(COMBINING_MARKS, "");
+export function foldConfusables(text, { substituteDigits = true } = {}) {
+  let folded = text.normalize("NFKD").replace(CONFUSABLE_RE, (ch) => CONFUSABLES.get(ch) ?? ch);
+  if (substituteDigits) {
+    folded = folded.replace(/[013457@$]/g, (ch) => ASCII_SUBSTITUTIONS[ch] ?? ch);
+  }
+  return folded.toLowerCase().replace(COMBINING_MARKS, "");
 }
 
 // Normalize for matching: fold as above, then collapse whitespace, so the
 // substitutions scammers use to dodge keyword filters ("v e r i f y",
 // "acc0unt", "раyраl" with Cyrillic а/р) land on the plain spelling.
-export function normalize(text) {
-  return foldConfusables(text).replace(/\s+/g, " ").trim();
+export function normalize(text, opts) {
+  return foldConfusables(text, opts).replace(/\s+/g, " ").trim();
 }
 
 // Combining marks (Unicode categories Mn/Mc) from the ten primary Indic
