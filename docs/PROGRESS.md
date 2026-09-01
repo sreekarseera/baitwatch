@@ -3,7 +3,7 @@
 Where the project stands and what is worth doing next. For how it works, see
 the root [`README.md`](../README.md); this file is the running log.
 
-Last updated **2026-08-17**.
+Last updated **2026-09-01**.
 
 ## Current state
 
@@ -19,8 +19,8 @@ Measured accuracy, from `node tests/test_benchmark.mjs`:
 
 | | rate |
 |---|---|
-| legitimate mail flagged | 0.98% |
-| …called *dangerous* | 0.22% |
+| legitimate mail flagged | 0.93% |
+| …called *dangerous* | 0.16% |
 | targeted scams missed | 0.00% |
 | Hinglish/Hindi scams missed | 0.00% |
 | …devanagari alone | 0/170 |
@@ -41,6 +41,115 @@ validation accuracy went *down* on 2026-08-17 (second entry), from 94.94% to
 94.31%, and that was the point: the corpus it is measured against had no
 modern transactional mail in it at all, so the old number was partly scoring a
 blind spot. Read that entry before trying to win the 0.63 points back.
+
+## 2026-09-01 (why the false positives keep coming back)
+
+Two false positives were reported from live browsing, both screenshots rather
+than test failures — which is itself the finding. The first, a genuine LinkedIn
+"your profile photo was changed" mail scored 60/100 on `credential_request`,
+turned out to be **already fixed**: the 08-16/08-17 rewrite made that rule
+require a transmission or entry verb, and "we'll require that you reset your
+password" is neither. It scores 0 today.
+
+The second was live. An ordinary LinkedIn feed post — "Congratulations to
+<name> on securing admission to <university>" — scored 51/100, because
+`prize_or_windfall` carried a bare `congratulations` in its alternation with no
+gate of any kind. Its Hindi twin `badhai|बधाई` sat ungated in `HI.prize` the
+same way. Both are now behind `CONGRATS_WINDFALL_RE`, which requires a winnings
+noun within 60 characters. The gate is a plain character window rather than the
+same-sentence window the other rules use, because the greeting is almost always
+its own sentence ("Congratulations! Your refund of Rs 4,500 is ready") and a
+`[^.!?]` window could never reach the noun it is meant to be gated on.
+
+All 8 rows in `curated.csv` that open with "congratulations" also say "you've
+won", which the rule's first branch matches on its own, so the bare word was
+carrying no case that was not already made. Corpus false positives went 0.98% →
+0.93%, dangerous 0.22% → 0.16%, targeted misses unchanged at 0/345.
+
+### The part that matters: this is not a regex bug
+
+The score curve is `squash(raw) = 100(1 − e^(−raw/2.6))`. Inverting it, a raw
+weight of **1.12** reaches SUSPICIOUS_AT, and **2.73** reaches DANGEROUS_AT. The
+lightest rule in the set is `artificial_urgency` at 1.2. So *every rule in the
+set crosses the warning threshold firing entirely alone* — 1.4 scores 42, 1.9
+scores 52, which is the 51 in the screenshot almost exactly.
+
+The obvious response is to require corroboration. Measured, that is impossible:
+
+```
+  rules fired |  curated scams |  legitimate mail
+      1       |       197      |        34
+      2       |       100      |        37
+      3       |        18      |         2
+      4       |         5      |         1
+```
+
+**62% of the scams this tool catches rest on a single rule.** A two-signal
+requirement would drop 197 real catches. One rule firing alone must stay
+sufficient to warn, and that constraint is not negotiable.
+
+Follow it through and the actual cause appears. If one rule must be sufficient
+evidence, then every rule must describe something *no legitimate sender ever
+does*. But a good half of the rules describe a **topic** — arrest, government,
+prize, urgency, investing — and legitimate senders discuss those topics
+constantly. Those rules are therefore not sufficient evidence, while the scorer
+grants them sufficient authority. The false positives are not malfunctions.
+They are topic-rules faithfully reporting a topic, read by the scorer as if
+they had detected an act.
+
+Solo convictions on the 1,834 legitimate corpus rows — one rule fired, nothing
+corroborated it, the user got a banner:
+
+```
+  rule                        solo-warns   fires at all
+  investment_scam                 10           12
+  impersonated_authority           8           75
+  threat_of_consequence            7           66
+  artificial_urgency               4           23
+  credential_request               3            3
+  prize_or_windfall                1            6
+```
+
+The ranking is the diagnosis. `credential_request` is act-shaped — it demands a
+transmission verb pointed at the sender — and touches 3 rows out of 1,834.
+`threat_of_consequence` is a bare alternation of `arrest|court|police|fine`,
+and its false positives are mailing-list threads titled "Six arrested for
+attacking Palio jockey" and "Defending Unliked Speech". `impersonated_authority`
+lists `federal|government|security team` with no gate, so any political thread
+trips it. The rules worked perfectly. They found the topic.
+
+Both shapes can sit inside one rule. `investment_scam`, the worst offender,
+opens with a sentence-gated `guarantee[ds]? … returns?` — a past fix — and ends
+with an ungated conjunction of `(invest|trading|stock|ipo)` AND
+`(profit|return|scheme)` anywhere in the text, which is the original design and
+fires on any financial newsletter.
+
+### What follows from it
+
+Every fix in this log — the `crypto_transfer` proximity gate, the
+`credential_request` direction requirement, the `gift_card_payment` ask gate,
+today's `congratulations` — is the same operation: converting one rule from
+topic-shaped to act-shaped. That is the correct fix and there is no better one
+available. What has been wrong is the scheduling. It has been done one rule per
+screenshot, in the order real life happened to embarrass us, across 24 rules
+that are perhaps half converted, with no completion criterion and no way to
+know which rule bites next. `prize_or_windfall` was sixth on that list.
+
+Worth noting that `no_action_requested` is already an ask-detector, inverted —
+it tests for the absence of click/pay/login/verify verbs — and is worth only
+−0.8. Promoting it from a nudge to a cap measures at +5 false positives removed
+and 1 curated scam lost (a Hinglish KYC line whose ask verb the Devanagari list
+is missing, so arguably a gap in the rule rather than a real loss).
+
+And the reason both of these arrived as screenshots rather than test failures:
+**the corpus contains no examples of the text the extension actually reads.**
+1,834 legitimate rows of 2002 mailing-list email, 66 held-out mails, 16 login
+pages — and not one social feed post, product page, or modern transactional
+notification. The generic adapter scans every `article`, `[role='listitem']`
+and `[role='article']` on every site, which on LinkedIn is every feed post and
+on Reddit every comment. Nothing in any test set resembles that input. Tuning a
+rule against data that cannot contain the failure is how a fix passes every
+gate and still ships the bug.
 
 ## 2026-08-17 (the last curated misses)
 

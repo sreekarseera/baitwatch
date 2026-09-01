@@ -125,6 +125,16 @@ const LEGIT = [
   // Real page text, fetched live rather than reconstructed.
   ["long informational page mentioning crypto and \"invest\" in unrelated places",
    "About Alpaca. History & Founders. Alpaca is a technology company headquartered in Silicon Valley that builds a simple and modern API for stock and crypto trading. Our Brokerage services are provided by Alpaca Securities LLC, a member of FINRA/SIPC. Our investors include a group of well-capitalized investors including Portage Ventures, Spark Capital, Tribe Capital, Social Leverage, Horizons Ventures, Elderidge, and Y Combinator as well as highly experienced industry angel investors such as Joshua S. Levine (former CTO/COO of ETRADE), Nate Rodland (former COO of Robinhood and GP of Elefund), Patrick O'Shaughnessy (\"Invest Like the Best\" podcast host and Partner of Positive Sum), Jacqueline Reses (former Executive Chairman of Square Financial Services). We currently support stocks, ETFs listed in the US public exchanges (NMS stocks), Options trading, and cryptocurrencies."],
+  // Real false positive, reported live against the LinkedIn feed: bare
+  // "congratulations" was an alternative in prize_or_windfall with no gate, so
+  // an ordinary well-wish scored 51/100 and warned. See docs/PROGRESS.md,
+  // 2026-09-01.
+  ["ordinary congratulation with no winnings anywhere in it",
+   "Global Dreams. Global Destinations. Congratulations to Rajshree S N on securing admission to Singapore Institute of Management (University of London)."],
+  ["congratulation on an award, which names a prize but is not one you won",
+   "Congratulations to the whole team on being shortlisted for the design award — the ceremony is on the 14th and I hope everyone can make it."],
+  ["hindi congratulation on an exam result",
+   "बधाई हो! आपने बोर्ड परीक्षा में बहुत अच्छे अंक प्राप्त किए हैं। आपके उज्ज्वल भविष्य की शुभकामनाएं।"],
 ];
 
 for (const [name, text] of LEGIT) {

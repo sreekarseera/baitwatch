@@ -97,7 +97,10 @@ const HI = {
   police:
     "cyber\\s*cell|साइबर\\s*सेल|cbi|सीबीआई|police(?!\\s*(?:verification|clearance))|पुलिस(?!\\s*(?:सत्यापन|वेरिफिकेशन|क्लीयरेंस))|warrant|वारंट(?!ी)|giraftar|गिरफ़?्तार|थाना|थाने|" +
     "\\bed\\b|ईडी|फेमा|supreme\\s*court|सुप्रीम\\s*कोर्ट|money\\s*laundering|मनी\\s*लॉन्ड्रिंग|दूरसंचार",
-  prize: "lotter[iy]|लॉटरी|jeet\\s*ga(?:ye|ya)|जीत\\s*ग(?:ए|या)|badhai|बधाई|inaam|इनाम",
+  // "badhai"/"बधाई" is congratulation, not windfall — see CONGRATS_RE, which
+  // holds it (and its English twin) behind a nearby-winnings gate. The terms
+  // left here each name the winnings themselves.
+  prize: "lotter[iy]|लॉटरी|jeet\\s*ga(?:ye|ya)|जीत\\s*ग(?:ए|या)|inaam|इनाम",
   kyc: "kyc|केवाईसी",
   // Parcel/courier vocabulary, Devanagari and Devanagari-spelled loanwords —
   // delivery_redispatch_fee had no Hindi-script coverage at all before this.
@@ -173,6 +176,31 @@ const CRYPTO_RE = String.raw`(?:bitcoin|btc|ethereum|eth|usdt|crypto(?:currency)
 const CRYPTO_VERB_RE = String.raw`(?:send|transfer|deposit|invest|double|pay|scan)`;
 const CRYPTO_TRANSFER_RE = new RegExp(
   `\\b${CRYPTO_RE}\\b[^.!?]{0,40}\\b${CRYPTO_VERB_RE}\\b|\\b${CRYPTO_VERB_RE}\\b[^.!?]{0,40}\\b${CRYPTO_RE}\\b`
+);
+
+// Congratulation is a greeting, not a lure. Bare "congratulations" convicted at
+// weight 1.9 on every ordinary well-wish — measured on a real LinkedIn feed
+// post ("Congratulations to <name> on securing admission to <university>"),
+// which scored 51/100 and warned the user. Every scam row in curated.csv that
+// opens this way also says "you've won", which the rule's first branch already
+// matches, so the bare word was carrying no case of its own.
+//
+// The gate is a plain character window, not the same-sentence gate the other
+// rules use: the greeting is nearly always its own sentence ("Congratulations!
+// Your refund of Rs 4,500 is ready"), so a [^.!?] window could never reach the
+// winnings it is meant to be gated on.
+//
+// "won"/"winner"/"selected" are deliberately absent from the gate. They read as
+// windfall next to "congratulations" but are exactly how a legitimate message
+// congratulates someone on an award or a job — and the scam phrasings ("you
+// have won", "you have been selected") are already their own branch. Only nouns
+// that name unearned money or goods are gate terms.
+const CONGRATS_RE = /\bcongratulations\b|\bbadhai\b|बधाई/;
+const WINNINGS_RE =
+  /\b(?:prize|reward|lottery|jackpot|refund|cashback|bonus|voucher|gift\s*card|winnings|unclaimed|lucky\s*draw|claim\s*(?:your|now|it)|crore|lakh|rs|inr)\b|इनाम|लॉटरी|रिफंड|कैशबैक|बोनस|पुरस्कार|लाख|करोड़|रुपये|क्लेम/;
+const CONGRATS_WINDFALL_RE = new RegExp(
+  `(?:${CONGRATS_RE.source})[\\s\\S]{0,60}(?:${WINNINGS_RE.source})` +
+    `|(?:${WINNINGS_RE.source})[\\s\\S]{0,60}(?:${CONGRATS_RE.source})`
 );
 
 // A gift card named anywhere used to be the whole rule, at the heaviest weight
@@ -367,8 +395,9 @@ const RULES = [
       // The subject isn't always literally "you" — "your email/number/name
       // was selected" is the same lure with the pronoun swapped out, and the
       // old pattern required "you" right before "selected/chosen" to match.
-      /\b(?:you(?:'ve| have)?\s*(?:been\s*)?(?:won|win|selected|chosen)|(?:was|has\s*been|have\s*been)\s*(?:selected|chosen)\s*to\s*receive|congratulations|lucky\s*(?:winner|draw)|claim\s*your\s*(?:prize|reward|gift)|lottery|jackpot|unclaimed\s*(?:funds|money|refund)|inherit(?:ance|ed))\b/.test(t) ||
+      /\b(?:you(?:'ve| have)?\s*(?:been\s*)?(?:won|win|selected|chosen)|(?:was|has\s*been|have\s*been)\s*(?:selected|chosen)\s*to\s*receive|lucky\s*(?:winner|draw)|claim\s*your\s*(?:prize|reward|gift)|lottery|jackpot|unclaimed\s*(?:funds|money|refund)|inherit(?:ance|ed))\b/.test(t) ||
       new RegExp(HI.prize).test(t) ||
+      CONGRATS_WINDFALL_RE.test(t) ||
       // Devanagari-spelled loanwords for the same "unexpected money is
       // waiting" lure — refunds, reward points, cashback, and bonuses that
       // were never earned, not the classic lottery framing. Gated on a
