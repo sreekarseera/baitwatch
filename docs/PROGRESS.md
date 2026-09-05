@@ -3,7 +3,7 @@
 Where the project stands and what is worth doing next. For how it works, see
 the root [`README.md`](../README.md); this file is the running log.
 
-Last updated **2026-09-01**.
+Last updated **2026-09-05**.
 
 ## Current state
 
@@ -48,6 +48,34 @@ validation accuracy went *down* on 2026-08-17 (second entry), from 94.94% to
 94.31%, and that was the point: the corpus it is measured against had no
 modern transactional mail in it at all, so the old number was partly scoring a
 blind spot. Read that entry before trying to win the 0.63 points back.
+
+## 2026-09-05 (closed the last network-consent item: a real person clicked through)
+
+The one item the 2026-08-16 entry (below, "network-consent implementation")
+left open — confirming `chrome.permissions.request()`'s native consent
+bubble renders sensibly and that a real person can act on it — is closed.
+It had stayed open even after the code merged (`d1d06af`, 2026-08-17)
+because nothing automated can click that bubble: not CDP's `Input` domain,
+and not a script-dispatched `click()` either, since Chrome only honors
+`chrome.permissions.request()` inside a *trusted* user gesture. AppleScript
+JS-injection (`osascript` with "Allow JavaScript from Apple Events" enabled
+in Chrome) can read and drive the extension's own pages perfectly well, but
+still can't manufacture that gesture — so the actual toggle clicks were done
+by Sreekar in his own Chrome, on the options page, while Claude drove
+verification around it.
+
+Both prompts rendered exactly as the settings copy promises: the
+`resolveShorteners` grant is the broad "read and change your data on a
+number of websites" (correct — it covers 19 shortener domains), and
+`checkUrlhaus` scopes narrowly to `urlhaus.abuse.ch` alone. After Allow on
+both, `options.html`'s two checkboxes read `checked: true` and **stayed
+true across a full page reload** — the grant is real and persisted, not a
+transient in-page toggle. The popup footer picked it up correctly too
+(`"Auto-scan on · Shortened-link lookup on"`); by design the footer has no
+URLhaus line, so its absence there isn't a gap.
+
+Nothing left blocking this feature. The merge this entry's stale 2026-08-16
+neighbor still asks for already happened three weeks ago.
 
 ## 2026-09-01 (closing the remaining data and verification gaps)
 
@@ -1773,33 +1801,11 @@ a *new* feature, not by looking for bugs.
 
 ## Next
 
-**Commit and merge today's work.** Two independent pieces of 2026-08-16's
-work are both done, tested, and still sitting as uncommitted working-tree
-changes: the network-consent implementation (below) and the accuracy fixes
-(crypto_transfer/investment_scam/prize_or_windfall/credential_request regex
-bugs, plus the training-data additions that fixed the Bitwarden/Alpaca false
-positives). Neither depends on the other; either can go first. The one
-open item below (clicking through the two new toggles) blocks merging the
-network-consent half specifically, not the accuracy fixes.
-
-**Click through the two new toggles as an actual person, once.** This is the
-one piece of 2026-08-16's work that could not be closed from here — not
-because it needs an account or a key (that turned out to be false for
-URLhaus, and shortener resolution needs neither), but because
-`chrome.permissions.request()`'s consent bubble is native browser chrome,
-outside anything CDP's `Input` domain can click. Everything downstream of a
-granted permission is now verified end to end (real `is.gd` redirect
-resolved correctly; the URLhaus fetch → parse → storage pipeline landed
-16,930 real entries) — what's left is confirming the grant/revoke prompts
-themselves render sensibly and that a real person can act on them. Turn on
-`resolveShorteners` and `checkUrlhaus` in a normal (non-automated) Chrome
-profile with this extension loaded, accept both prompts, and check the
-options page's status lines and the popup footer read correctly afterward.
-
-**Merge the network-consent implementation (2026-08-16) into `main`** once
-the item above is done. It's currently uncommitted working-tree changes
-only. (The Devanagari corpus work is separate and already on `main` and
-pushed — see the 2026-08-15 correction above.)
+**Both 2026-08-16 items are closed.** The network-consent implementation
+merged as `d1d06af` on 2026-08-17, and the last open piece — a real person
+clicking through the `resolveShorteners`/`checkUrlhaus` consent prompts —
+closed 2026-09-05 (see that entry above). Nothing from that work is
+outstanding any more.
 
 **More Devanagari rows, if the miss rate needs to come down further.**
 17/162 Devanagari scams are still missed after today's pass — well inside
