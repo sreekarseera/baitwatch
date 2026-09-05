@@ -85,6 +85,74 @@ const HOSTED_AUTH_DOMAINS = new Set([
 // built harvest page is thin and a real product's login screen usually isn't.
 const VERY_THIN_PAGE_CHARS = 400;
 
+// A third, independent path into `analyzeStandaloneHarvest`, for a page of
+// ordinary length asking for one credential — the "small bank's own auth
+// vendor" shape that VERY_THIN_PAGE_CHARS and multi-secret both correctly
+// stay quiet on. What still separates a real page like that from a clone is
+// whether the page's own title bothers to *name a specific brand it has no
+// stated relationship to*. A genuine bank's title, or the vendor domain it
+// posts to, almost always carries the bank's own name somewhere
+// (`greenleaf-auth.com` for "GreenLeaf Community Bank") — that is a
+// relationship, not a coincidence. A clone has no reason to share a token
+// with either its own throwaway domain or its drop site, because neither one
+// belongs to the brand it is naming.
+//
+// Deliberately conservative in two ways. First, only the *title* is read —
+// body text is noisy and would turn any brand mention anywhere on the page
+// into "evidence"; a title is short, structured, and already treated
+// elsewhere in this file as sufficient proof of a claim on its own (see
+// `claimsIdentity`'s title branch, which needs no adjacency check either).
+// Second, a candidate name is only extracted when a login/sign-in/banking
+// phrase actually borders it — `TITLE_FILLER_RE` has to strip *something*,
+// or nothing is treated as a claim at all. That is what keeps a title like
+// "Member Portal" (no login phrase to strip, and nothing to strip away from)
+// from becoming its own evidence — see `GENERIC_TITLE_WORDS` for the second
+// half of that same guard, for the case where a phrase like "Sign In -
+// Member Portal" strips clean but leaves only generic nouns behind.
+const TITLE_FILLER_RE =
+  /\b(?:sign(?:ing)?[\s-]?in|log(?:ging)?[\s-]?in|signin|login|welcome(?:\s+back)?|secure\s*login|net\s?banking|internet\s+banking|online\s+banking|account\s+login|authentication|verify\s+your\s+account|continue)\b/gi;
+const TITLE_EDGE_RE = /^[\s\-–—|:.]+|[\s\-–—|:.]+$/g;
+
+// Generic nouns a login page's title carries constantly, none of which name
+// a brand. If stripping TITLE_FILLER_RE leaves only these, there is no claim
+// to point to — "Sign In - Member Portal" must not read the same as "Sign In
+// - Horizon Credit Union".
+const GENERIC_TITLE_WORDS = new Set([
+  "member", "members", "portal", "account", "accounts", "dashboard", "home",
+  "secure", "service", "services", "online", "banking", "customer", "client",
+  "user", "users", "page", "site", "website", "welcome", "area", "center",
+  "centre", "hub", "system", "app", "application", "into", "your", "you", "the",
+]);
+
+/**
+ * The specific brand name a page's title claims, as a list of its
+ * significant words — or null if the title has no login-adjacent phrase to
+ * strip, or nothing but generic nouns is left once it is.
+ */
+function claimedEntityName(title) {
+  if (!title) return null;
+  const trimmedTitle = title.trim();
+  const stripped = title.replace(TITLE_FILLER_RE, " ").replace(TITLE_EDGE_RE, "").trim();
+  if (!stripped || stripped === trimmedTitle) return null; // no login-adjacent phrase was found at all
+  if (stripped.length < 3 || stripped.length > 40) return null;
+
+  const words = stripped.split(/\s+/).filter((w) => /[a-z]/i.test(w));
+  const significant = words.filter((w) => !GENERIC_TITLE_WORDS.has(w.toLowerCase()));
+  return significant.length > 0 ? significant : null;
+}
+
+// Does any significant word from the claimed name also turn up in this
+// domain? A real hosted-auth vendor, or a bank's own separately-branded auth
+// backend, routinely carries the bank's own name — that is a stated
+// relationship the text itself volunteers, not a mismatch, and must not be
+// read as one. Only words of 4+ letters count, so "the" or "bank" alone
+// cannot manufacture a relationship that isn't there.
+function nameRelatesToDomain(words, domain) {
+  if (!domain) return false;
+  const lower = domain.toLowerCase();
+  return words.some((w) => w.length >= 4 && lower.includes(w.toLowerCase()));
+}
+
 function escapeRe(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -141,8 +209,19 @@ function claimsIdentity(brand, title, lead) {
  * the destination is *not* a recognized identity provider or a
  * PROTECTED_BRANDS domain (handing credentials to a real company's own site
  * is a fact about that company, not evidence of a harvest) AND the page
- * brings at least one more independent piece of structural evidence:
+ * brings at least one more independent piece of structural evidence, in
+ * order of how much that evidence is trusted:
  *
+ *   - the page's own title names a *specific brand* — via the same
+ *     login-adjacent-phrase idea `claimsIdentity` uses for PROTECTED_BRANDS,
+ *     just without a fixed list to check it against — that shares no word
+ *     with either the page's own domain or the domain the form posts to.
+ *     A legitimate page's title (or its auth vendor's domain) almost always
+ *     carries its own name somewhere; a clone naming a brand it has nothing
+ *     to do with, while quietly posting to a domain that doesn't either, is
+ *     the exact structural gap this backlog item exists to close — strong
+ *     enough on its own to convict without needing either of the two
+ *     conditions below (see the weight comment); or
  *   - the page is not just thin (THIN_PAGE_CHARS already allows an ordinary
  *     login page to be) but *very* thin — nothing on it besides the form and
  *     a headline, the way an embedded widget on a real product rarely is; or
@@ -150,12 +229,15 @@ function claimsIdentity(brand, title, lead) {
  *     pages ask for one thing at a time, the same reasoning
  *     `credential_request` in heuristics.js already leans on for messages.
  *
- * Deliberately weaker than `brand_impersonation`: that rule gets to name the
- * brand being impersonated as evidence; this one only has structure, so its
- * weight stays further under the score that would convict alone (see
- * engine.js's squash() and the MODEL_MAX_PULL_PAGE comment on why a
- * heuristic this uncertain should not be able to move a page that trips
- * nothing else into "dangerous").
+ * The latter two are deliberately weaker than `brand_impersonation`: that
+ * rule gets to name the brand being impersonated as evidence, and these have
+ * only structure, so their weight stays further under the score that would
+ * convict alone (see engine.js's squash() and the MODEL_MAX_PULL_PAGE
+ * comment on why a heuristic this uncertain should not be able to move a
+ * page that trips nothing else into "dangerous"). The first is not weaker in
+ * that sense — it names a brand the same way `brand_impersonation` does, and
+ * additionally proves the off-site destination is unrelated to it, which
+ * that rule does not require — so it is trusted enough to convict alone.
  */
 function analyzeStandaloneHarvest(page, domain, credentials, body) {
   const foreign = (page.formTargets || [])
@@ -165,11 +247,36 @@ function analyzeStandaloneHarvest(page, domain, credentials, body) {
   if (HOSTED_AUTH_DOMAINS.has(foreign)) return [];
   if (PROTECTED_BRANDS.some((brand) => brand.domains.includes(foreign))) return [];
 
+  const claimedWords = claimedEntityName(page.title || "");
+  const unrelatedClaim =
+    Boolean(claimedWords) &&
+    !nameRelatesToDomain(claimedWords, domain) &&
+    !nameRelatesToDomain(claimedWords, foreign);
+
   const veryThin = body.length <= VERY_THIN_PAGE_CHARS;
   const multiSecret = new Set(credentials).size >= 2;
-  if (!veryThin && !multiSecret) return [];
+  if (!unrelatedClaim && !veryThin && !multiSecret) return [];
 
   const asks = credentials.join(" and ");
+
+  if (unrelatedClaim) {
+    const claimedName = claimedWords.join(" ");
+    return [
+      {
+        id: "offsite_credential_harvest",
+        // squash(3.0) ≈ 68 — above DANGEROUS_AT (65) with a few points of
+        // margin for a small negative model pull, unlike the 2.2/1.6 below.
+        // Below the 3.6 a PROTECTED_BRANDS brand_impersonation + a
+        // corroborating offsite_credential_post reach together (2.6 + 1.0):
+        // this signal is generic-extraction-based rather than checked
+        // against a hand-vetted domain list, so it is trusted less than that
+        // combination even though it stands alone here.
+        weight: 3.0,
+        detail: `This page presents itself as "${claimedName}" but is served from "${domain}" and sends what you type to "${foreign}" — a site with no stated relationship to either "${domain}" or "${claimedName}", and not a recognized sign-in provider.`,
+      },
+    ];
+  }
+
   return [
     {
       id: "offsite_credential_harvest",

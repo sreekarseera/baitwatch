@@ -841,6 +841,87 @@ check(
   `scored ${smallBankOwnAuthVendor.score}, fired: ${smallBankOwnAuthVendor.reasons.map((r) => r.id).join(", ") || "none"}`
 );
 
+// The backlog item this section exists for: off-site credential POST used to
+// be able to convict only as corroboration for a PROTECTED_BRANDS mismatch.
+// This page is a normal length (not "very thin") and asks for one credential
+// (not "multi-secret"), so neither existing corroborator applies — the only
+// thing wrong with it is that its title names a specific credit union that
+// shares no word with either its own throwaway domain or its drop site. That
+// is meant to stand alone.
+const HORIZON_TEXT =
+  "Horizon Credit Union online banking lets members check balances, transfer funds between Horizon " +
+  "accounts, and pay bills electronically. Members can also set up account alerts and mobile check deposit " +
+  "from this page. Routing number 284977512. Horizon Credit Union is federally insured by the NCUA and an " +
+  "Equal Housing Lender. Contact member support at 555-0199, Monday through Friday, 9am to 5pm, or visit " +
+  "one of our branch locations. Enter your password to continue.";
+
+const unrelatedBrandClaim = await pageScan(HORIZON_TEXT, {
+  url: "https://acct-verify-secure.com/login",
+  title: "Sign In - Horizon Credit Union",
+  credentialFields: ["password"],
+  formTargets: ["https://collect-data-919.info/save"],
+});
+check(
+  "a title claiming a specific brand unrelated to either domain convicts standalone",
+  unrelatedBrandClaim.reasons.some((r) => r.id === "offsite_credential_harvest") &&
+    unrelatedBrandClaim.verdict === VERDICT.DANGEROUS,
+  `scored ${unrelatedBrandClaim.score}, fired: ${unrelatedBrandClaim.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+// The same title claim, but the domain the form posts to shares "horizon"
+// with it — the GreenLeaf shape, restated with a title-claim instead of a
+// multi-secret ask, so the "shares a word" half of the guard is pinned on
+// its own rather than only through the older corroborators.
+const relatedBrandClaim = await pageScan(HORIZON_TEXT, {
+  url: "https://horizoncu-secure.com/login",
+  title: "Sign In - Horizon Credit Union",
+  credentialFields: ["password"],
+  formTargets: ["https://identity.horizon-auth.com/submit"],
+});
+check(
+  "a title claim that shares a name with the post-target domain is not flagged",
+  relatedBrandClaim.verdict === VERDICT.SAFE &&
+    !relatedBrandClaim.reasons.some((r) => r.id === "offsite_credential_harvest"),
+  `scored ${relatedBrandClaim.score}, fired: ${relatedBrandClaim.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+// A title claim must not be able to override the hosted-auth-provider
+// exemption — Okta receiving a real bank's off-site post is still legitimate
+// even when the title also happens to name that bank specifically.
+const claimedButHostedAuth = await pageScan(HORIZON_TEXT, {
+  url: "https://acct-verify-secure.com/login",
+  title: "Sign In - Horizon Credit Union",
+  credentialFields: ["password"],
+  formTargets: ["https://horizoncu.okta.com/login"],
+});
+check(
+  "a title claim does not override the hosted-auth-provider exemption",
+  claimedButHostedAuth.verdict === VERDICT.SAFE &&
+    !claimedButHostedAuth.reasons.some((r) => r.id === "offsite_credential_harvest"),
+  `scored ${claimedButHostedAuth.score}, fired: ${claimedButHostedAuth.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
+// A title with no login-adjacent phrase to strip must not manufacture a
+// claim out of generic furniture words.
+const genericTitleOnly = await pageScan(
+  "Enter your password to continue. Members can view balances, transfer funds, and pay bills from this " +
+    "page. Contact support during business hours for help accessing your account or resetting a forgotten " +
+    "password. Routing and account numbers are available on your monthly statement, along with a summary " +
+    "of recent transactions and any pending holds on your account. Statements can be downloaded as PDF " +
+    "files from the documents section of this page.",
+  {
+    url: "https://acct-verify-secure.com/login",
+    title: "Member Portal",
+    credentialFields: ["password"],
+    formTargets: ["https://collect-data-919.info/save"],
+  }
+);
+check(
+  "a generic title with no brand name is not read as a claim",
+  !genericTitleOnly.reasons.some((r) => r.id === "offsite_credential_harvest"),
+  `scored ${genericTitleOnly.score}, fired: ${genericTitleOnly.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
 // The whole-page scan exists to be used on sign-in pages, so the genuine ones
 // have to come back clean. They did not: "enter your password" read as a
 // credential request, and every real login page on the internet says it.
