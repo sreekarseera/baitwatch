@@ -62,10 +62,18 @@
     return SEVERITY_RANK[result.verdict] >= min;
   }
 
+  // Remove a previously-inserted banner by the content-hash it was built for,
+  // if one is still in the DOM. Shared by render()'s same-pass dedup and
+  // scan()'s stale-banner cleanup below.
+  function removeBanner(id) {
+    if (!id) return;
+    const existing = document.querySelector(`[data-baitwatch-id="${CSS.escape(id)}"]`);
+    if (existing) existing.remove();
+  }
+
   function render(message, result) {
     // Don't stack duplicates if a re-scan races the first render.
-    const existing = document.querySelector(`[data-baitwatch-id="${CSS.escape(result.id)}"]`);
-    if (existing) existing.remove();
+    removeBanner(result.id);
 
     const warning = PD.buildWarning(result, {
       onBlock: (email) => chrome.runtime.sendMessage({ type: "BLOCK_SENDER", email }),
@@ -76,6 +84,14 @@
     const target = message.element;
     if (target && target.parentNode) {
       target.parentNode.insertBefore(warning, target);
+      // Remember which content this element's banner belongs to. Virtualized
+      // feeds (X and other infinite-scroll timelines) recycle the same DOM
+      // node for different messages as the user scrolls; without this tag, a
+      // banner rendered for tweet-1's text has no way to be told apart from
+      // the same node later holding unrelated tweet-2 text, and it sits there
+      // forever. See the recycling check in scan() below — the other half of
+      // this fix.
+      if (target.dataset) target.dataset.baitwatchSourceId = result.id;
     }
   }
 
@@ -119,6 +135,22 @@
     noteHealth(health.record(messages.length));
 
     for (const message of messages) {
+      // Detect DOM-node recycling: virtualized feeds reuse the same element
+      // for a new message once the old one scrolls out. `handled` is keyed by
+      // content hash, so a recycled node's new content is naturally treated
+      // as unseen below — but a banner from the *old* content, if any, is
+      // still sitting next to this element and nothing else would ever
+      // notice it no longer describes what's here. If the element's tagged
+      // source id doesn't match this pass's id, its content changed under it;
+      // drop the stale banner before deciding whether the new content earns
+      // one of its own.
+      const target = message.element;
+      const staleId = target?.dataset?.baitwatchSourceId;
+      if (staleId && staleId !== message.id) {
+        removeBanner(staleId);
+        delete target.dataset.baitwatchSourceId;
+      }
+
       if (handled.has(message.id)) continue;
       handled.set(message.id, "pending");
 

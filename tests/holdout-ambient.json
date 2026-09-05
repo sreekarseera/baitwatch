@@ -219,5 +219,57 @@
       "credentialFields": [],
       "formTargets": []
     }
+  },
+  {
+    "name": "X feed post — angry reply, no money or crypto mentioned",
+    "site": "x.com",
+    "kind": "feed-post",
+    "captured": "2026-09-05",
+    "text": "What kind of psycho whore mom is actually bothered by her kid being a kid?",
+    "page": {
+      "url": "https://x.com/home",
+      "title": "Home / X",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "X feed post — culture-war reply, no money or crypto mentioned",
+    "site": "x.com",
+    "kind": "feed-post",
+    "captured": "2026-09-05",
+    "text": "The same ones that think all men are evil...",
+    "page": {
+      "url": "https://x.com/home",
+      "title": "Home / X",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "X feed post — violent insult, no money or crypto mentioned",
+    "site": "x.com",
+    "kind": "feed-post",
+    "captured": "2026-09-05",
+    "text": "Kill the piece of shit.",
+    "page": {
+      "url": "https://x.com/home",
+      "title": "Home / X",
+      "credentialFields": [],
+      "formTargets": []
+    }
+  },
+  {
+    "name": "X reply thread — satirical hacker/Bitcoin meme, third-person and fictional, not an ask of the reader",
+    "site": "x.com",
+    "kind": "reply-thread",
+    "captured": "2026-09-05",
+    "text": "🚨 A hacker group announced at 3:00 AM: 'We have locked all Starlink ground stations worldwide. Pay $500 million in Bitcoin, or the world goes offline!' 🚀 Elon Musk replied: 'Check your firmware...'",
+    "page": {
+      "url": "https://x.com/i/status/0000000000000000000",
+      "title": "Post / X",
+      "credentialFields": [],
+      "formTargets": []
+    }
   }
 ]

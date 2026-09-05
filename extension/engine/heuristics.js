@@ -202,6 +202,30 @@ const CRYPTO_TRANSFER_RE = new RegExp(
   `\\b${CRYPTO_RE}\\b[^.!?]{0,40}\\b${CRYPTO_VERB_RE}\\b|\\b${CRYPTO_VERB_RE}\\b[^.!?]{0,40}\\b${CRYPTO_RE}\\b`
 );
 
+// Same-sentence proximity says the message is *about* a crypto payment, not
+// that the reader is the one being asked to make it. A fictional, third-person
+// meme — "A hacker group announced: 'We have locked all Starlink ground
+// stations. Pay $500 million in Bitcoin, or the world goes offline!' Elon Musk
+// replied: ..." — matches CRYPTO_TRANSFER_RE (pay ... Bitcoin, one sentence)
+// with nobody addressed in that sentence at all; it is reported speech inside
+// a joke, not an ask. Contrast the genuine "Double your Bitcoin in 24 hours!
+// Send BTC to this wallet address", where the sentence naming the ask also
+// names the reader. This is the same direction problem threat_of_consequence
+// solved via THREAT_AT_READER_RE above: require a second-person frame in the
+// same clause as the ask, rather than convicting on the topic alone.
+//
+// Checked per clause rather than folded into one bidirectional window regex:
+// the pronoun can land on either side of either token, and CRYPTO_TRANSFER_RE's
+// own [^.!?] gap already guarantees a match never crosses a sentence boundary,
+// so testing clause-by-clause is exactly as strict as a same-sentence window
+// regex would be — just legible instead of a wall of alternation.
+const CRYPTO_READER_RE = /\byou(?:r|'re)?\b/;
+function cryptoAskedOfReader(t) {
+  return t
+    .split(/[.!?]/)
+    .some((clause) => CRYPTO_TRANSFER_RE.test(clause) && CRYPTO_READER_RE.test(clause));
+}
+
 // Congratulation is a greeting, not a lure. Bare "congratulations" convicted at
 // weight 1.9 on every ordinary well-wish — measured on a real LinkedIn feed
 // post ("Congratulations to <name> on securing admission to <university>"),
@@ -587,7 +611,7 @@ const RULES = [
     id: "crypto_transfer",
     weight: 2.4,
     why: "It asks you to send cryptocurrency. Crypto payments cannot be reversed or recovered once sent.",
-    test: (t) => CRYPTO_TRANSFER_RE.test(t),
+    test: (t) => cryptoAskedOfReader(t),
   },
   {
     id: "upi_collect_request",

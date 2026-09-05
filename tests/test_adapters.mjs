@@ -215,6 +215,257 @@ check(
   legacy?.record?.(0, { now: 99000 }) === "unknown"
 );
 
+/* --------------------- scanner.js: virtualized-feed recycling --------------- */
+// content/scanner.js (2026-09-05 fix). X's timeline, and any other virtualized
+// infinite-scroll feed, reuses the same <article> DOM node for a new message
+// as the user scrolls. scanner.js's `handled` map is keyed by a content hash,
+// not by element, so nothing previously noticed when a node's *content*
+// changed out from under an already-rendered banner — the banner, inserted as
+// a plain DOM sibling, just stayed there, permanently, next to whatever
+// unrelated text later scrolled into that position. This regression-tests the
+// fix directly against the real content scripts (adapters.js, overlay.js,
+// scanner.js), not a reimplementation of their logic, using a hand-built fake
+// DOM — the same approach the health-monitor tests above use, extended with
+// just enough of a live parent/child tree (insertBefore, remove) and an
+// attribute-selector lookup for `[data-baitwatch-id="..."]` to let render()'s
+// dedup and scan()'s stale-banner cleanup actually run.
+//
+// This is the DOM/rendering half of the 2026-09-05 fix; the engine-side half
+// (crypto_transfer requiring reader-direction) is covered by
+// tests/test_engine.mjs and tests/holdout-ambient.json instead. Untested here:
+// the real browser layer (a real Chrome tab, a real MutationObserver actually
+// firing on real mutations) — that needs python3 tests/run_all.py with a
+// working Chrome for Testing checkout, which see docs/PROGRESS.md for.
+
+function fakeElement(tag) {
+  return {
+    tagName: tag,
+    className: "",
+    dataset: {},
+    children: [],
+    parentNode: null,
+    innerText: "",
+    textContent: "",
+    disabled: false,
+    attachShadow() {
+      return fakeElement("#shadow-root");
+    },
+    appendChild(child) {
+      this.children.push(child);
+      child.parentNode = this;
+      return child;
+    },
+    append(...kids) {
+      kids.forEach((k) => this.appendChild(k));
+    },
+    insertBefore(newNode, refNode) {
+      const idx = this.children.indexOf(refNode);
+      this.children.splice(idx === -1 ? this.children.length : idx, 0, newNode);
+      newNode.parentNode = this;
+      return newNode;
+    },
+    removeChild(child) {
+      const idx = this.children.indexOf(child);
+      if (idx !== -1) this.children.splice(idx, 1);
+      child.parentNode = null;
+      return child;
+    },
+    remove() {
+      if (this.parentNode) this.parentNode.removeChild(this);
+    },
+    setAttribute() {},
+    getAttribute() {
+      return null;
+    },
+    addEventListener() {},
+    querySelector() {
+      return null;
+    },
+    closest() {
+      return null;
+    },
+  };
+}
+
+const GENERIC_SELECTOR =
+  "article, [role='article'], [role='listitem'], .message, .email-body, .msg-body, blockquote";
+
+// Loads the three real classic scripts into one vm context sharing `window`,
+// against a feed containing a single recyclable <article>, and wires just
+// enough of chrome.runtime for scanner.js's init() to run for real: settings
+// load, one ANALYZE round-trip per message, and a RESCAN entry point this
+// test uses to drive a second pass by hand (standing in for the
+// MutationObserver callback a real scroll would trigger).
+function loadScanner({ hostname, articleText, verdictFor }) {
+  const feed = fakeElement("div");
+  const article = fakeElement("article");
+  article.innerText = articleText;
+  feed.appendChild(article);
+
+  let onMessageListener = null;
+
+  const fakeDocument = {
+    body: fakeElement("body"),
+    readyState: "complete",
+    createElement: (tag) => fakeElement(tag),
+    querySelectorAll: (sel) => (sel === GENERIC_SELECTOR ? [article] : []),
+    querySelector: (sel) => {
+      const m = /^\[data-baitwatch-id="(.*)"\]$/.exec(sel);
+      if (!m) return null;
+      return feed.children.find((c) => c.dataset && c.dataset.baitwatchId === m[1]) || null;
+    },
+  };
+
+  const context = {
+    window: {},
+    document: fakeDocument,
+    location: { hostname, href: `https://${hostname}/home` },
+    console,
+    CSS: { escape: (s) => s },
+    MutationObserver: class {
+      observe() {}
+      disconnect() {}
+    },
+    setInterval: () => 0,
+    clearInterval: () => {},
+    setTimeout: (fn, ms) => setTimeout(fn, ms),
+    clearTimeout: (id) => clearTimeout(id),
+    chrome: {
+      runtime: {
+        sendMessage: (msg) => {
+          if (msg.type === "GET_SETTINGS") {
+            return Promise.resolve({
+              autoScan: true,
+              scanGeneric: true,
+              scanGmail: true,
+              scanChat: true,
+              minSeverityToWarn: "suspicious",
+            });
+          }
+          if (msg.type === "ANALYZE") return Promise.resolve(verdictFor(msg.text));
+          return Promise.resolve(null);
+        },
+        onMessage: {
+          addListener: (fn) => {
+            onMessageListener = fn;
+          },
+        },
+      },
+      storage: { onChanged: { addListener: () => {} } },
+    },
+  };
+
+  vm.createContext(context);
+  for (const file of ["adapters.js", "overlay.js", "scanner.js"]) {
+    vm.runInContext(readFileSync(join(ext, "content", file), "utf-8"), context);
+  }
+
+  return {
+    feed,
+    article,
+    rescan: () => new Promise((resolve) => onMessageListener({ type: "RESCAN" }, {}, resolve)),
+  };
+}
+
+// Every chrome.runtime call above resolves via Promise.resolve(), so draining
+// a handful of microtask turns is enough to let init()'s fire-and-forget first
+// scan (loadSettings -> collect -> ANALYZE -> render) settle before asserting
+// on it.
+async function settle() {
+  for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
+}
+
+{
+  const TEXT1 = "Original tweet asking for a Bitcoin payment right now.";
+  const TEXT2 = "Completely unrelated later tweet about something else entirely.";
+
+  const scanner = loadScanner({
+    hostname: "x.com",
+    articleText: TEXT1,
+    verdictFor: (text) =>
+      text === TEXT1
+        ? {
+            verdict: "dangerous",
+            score: 82,
+            reasons: [{ id: "crypto_transfer", detail: "It asks you to send cryptocurrency." }],
+            skipped: false,
+          }
+        : { verdict: "safe", score: 0, reasons: [], skipped: false },
+  });
+  await settle();
+
+  const firstBanner = scanner.feed.children.find((c) => c !== scanner.article);
+  check(
+    "scanner: first scan renders a banner next to the article",
+    Boolean(firstBanner),
+    `feed has ${scanner.feed.children.length} children`
+  );
+  const staleId = firstBanner?.dataset?.baitwatchId;
+  check(
+    "scanner: the article is tagged with the banner's content hash",
+    Boolean(staleId) && scanner.article.dataset.baitwatchSourceId === staleId
+  );
+
+  // Virtualization: the feed recycles this exact <article> node for a new,
+  // unrelated message as the user scrolls. Nothing removed the old banner
+  // before this fix — it stayed put, permanently attached to whatever content
+  // later scrolled into this position. Standing in for the MutationObserver
+  // callback a real scroll would fire, RESCAN is this test's hand-driven
+  // second pass over the same (now recycled) node.
+  scanner.article.innerText = TEXT2;
+  await scanner.rescan();
+
+  check(
+    "scanner: recycling the article's content removes the stale banner",
+    !scanner.feed.children.some((c) => c.dataset && c.dataset.baitwatchId === staleId)
+  );
+  check(
+    "scanner: no banner lingers for the new content when it doesn't warrant one",
+    scanner.feed.children.length === 1 && scanner.feed.children[0] === scanner.article,
+    `feed has ${scanner.feed.children.length} children`
+  );
+}
+
+{
+  // The other half: the recycled-in content is *also* dangerous. The stale
+  // banner still has to go — it was built from the old analysis, wrong
+  // reasons and all — and exactly one fresh banner, tagged for the new
+  // content, should take its place.
+  const TEXT1 = "First message about winning a prize you must claim now.";
+  const TEXT2 = "Second unrelated message asking you to send Bitcoin to this wallet.";
+
+  const scanner = loadScanner({
+    hostname: "x.com",
+    articleText: TEXT1,
+    verdictFor: (text) => ({
+      verdict: "dangerous",
+      score: 80,
+      reasons: [{ id: text === TEXT1 ? "prize_or_windfall" : "crypto_transfer", detail: "..." }],
+      skipped: false,
+    }),
+  });
+  await settle();
+
+  const firstBanner = scanner.feed.children.find((c) => c !== scanner.article);
+  const firstId = firstBanner?.dataset?.baitwatchId;
+
+  scanner.article.innerText = TEXT2;
+  await scanner.rescan();
+
+  const banners = scanner.feed.children.filter((c) => c !== scanner.article);
+  check(
+    "scanner: recycled content that also warrants a banner ends up with exactly one, not two",
+    banners.length === 1,
+    `feed has ${banners.length} banner(s)`
+  );
+  check(
+    "scanner: the surviving banner is tagged for the new content, not the old",
+    Boolean(firstId) &&
+      banners[0]?.dataset?.baitwatchId !== firstId &&
+      scanner.article.dataset.baitwatchSourceId === banners[0]?.dataset?.baitwatchId
+  );
+}
+
 /* ---------------------------------- report --------------------------------- */
 
 const total = passed + failures.length;
