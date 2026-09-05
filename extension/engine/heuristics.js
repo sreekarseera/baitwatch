@@ -227,6 +227,19 @@ const CONGRATS_WINDFALL_RE = new RegExp(
     `|(?:${WINNINGS_RE.source})[\\s\\S]{0,60}(?:${CONGRATS_RE.source})`
 );
 
+// Same gate shape as CONGRATS_WINDFALL_RE, for "guaranteed" — used only by
+// prize_or_windfall. "Guaranteed" alone is ordinary sales copy ("guaranteed
+// delivery by Friday"); next to a named prize noun it's the "you've won"
+// lure with the verb swapped out ("guaranteed £1000 CASH", "£200 Prize
+// guaranteed!"). Reuses WINNINGS_RE's noun list minus the abstract terms
+// ("refund", "unclaimed", "crore"/"lakh"/"rs"/"inr") that only make sense
+// paired with a windfall verb, not "guaranteed" — a bank can say "guaranteed
+// refund processing" about a routine return with nothing scammy about it.
+const GUARANTEED_WINDFALL_RE = new RegExp(
+  `\\bguaranteed\\b[\\s\\S]{0,70}\\b(?:prize|cash|gift|reward|voucher|holiday|tickets?)\\b` +
+    `|\\b(?:prize|cash|gift|reward|voucher|holiday|tickets?)\\b[\\s\\S]{0,70}\\bguaranteed\\b`
+);
+
 // A legal consequence named anywhere used to be the whole of
 // threat_of_consequence, and the nouns it names are the ordinary vocabulary of
 // news reporting and of any thread that discusses the law. Counted across the
@@ -746,9 +759,35 @@ const RULES = [
       // The subject isn't always literally "you" — "your email/number/name
       // was selected" is the same lure with the pronoun swapped out, and the
       // old pattern required "you" right before "selected/chosen" to match.
-      /\b(?:you(?:'ve| have)?\s*(?:been\s*)?(?:won|win|selected|chosen)|(?:was|has\s*been|have\s*been)\s*(?:selected|chosen)\s*to\s*receive|lucky\s*(?:winner|draw)|claim\s*your\s*(?:prize|reward|gift)|lottery|jackpot|unclaimed\s*(?:funds|money|refund)|inherit(?:ance|ed))\b/.test(t) ||
+      //
+      // This corpus is 2000s UK SMS-spam text, and it is noisy in three
+      // specific ways the old pattern didn't survive: "u" for "you", a
+      // dropped or transposed "have" ("ave", "hvae"), and an apostrophe
+      // dropped from "you've" leaving bare "you ve". None of the three touch
+      // what comes *after* the pronoun — the verb list, and the requirement
+      // that a pronoun/typo-of-have precede it, are unchanged — so this still
+      // won't fire on a bare "won"/"selected" with no subject in front of it.
+      // "specially selected" is the other recurring variant: same lure, one
+      // extra word wedged before the verb.
+      //
+      // Every bare "won" below is written `won(?!'t)` — "you appear to be
+      // using an email application that won't properly display..." is
+      // ordinary 2002 HTML-email boilerplate, and \b does not stop at an
+      // apostrophe, so "won't" reads as the word "won" followed by "'t". The
+      // lookahead is what keeps "email ... won't" out of the new
+      // number/email/name branch below; measured against dataset.csv's 1,834
+      // legitimate rows, that branch without it convicted two of them
+      // ("Apple Store eNews", "QuickTime News") on this alone.
+      /\b(?:(?:you|u)(?:'ve|\s*ve\b|\s*h?ave|\s*hvae)?\s*(?:been\s*)?(?:specially\s*)?(?:won(?!'t)|win|selected|chosen)|(?:was|has\s*been|have\s*been)\s*(?:selected|chosen)\s*to\s*receive|(?:number|email|name|account|line)\b[^.!?]{0,20}\bwon(?!'t)\b|to\s*be\s*won(?!'t)|lucky\s*(?:winner|draw)|claim\s*your\b[^.!?]{0,25}\b(?:prize|reward|gift|cash|voucher|tickets?)\b|lottery|jackpot|unclaimed\s*(?:funds|money|refund)|inherit(?:ance|ed))\b/.test(t) ||
       new RegExp(HI.prize).test(t) ||
       CONGRATS_WINDFALL_RE.test(t) ||
+      // "Guaranteed" gated the same way CONGRATS_WINDFALL_RE gates
+      // "congratulations" — on its own it's an ordinary sales-copy word
+      // ("guaranteed delivery", "guaranteed lowest price"), but next to a
+      // named prize/cash/voucher noun it's the same unsolicited-windfall
+      // lure with "you've won" swapped out ("you are guaranteed ... a £500
+      // prize!", "£200 Prize guaranteed!").
+      GUARANTEED_WINDFALL_RE.test(t) ||
       // Devanagari-spelled loanwords for the same "unexpected money is
       // waiting" lure — refunds, reward points, cashback, and bonuses that
       // were never earned, not the classic lottery framing. Gated on a
