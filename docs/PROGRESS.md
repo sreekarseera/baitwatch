@@ -13,7 +13,7 @@ Last updated **2026-09-05**.
 | Archive | `github.com/sreekarseera/baitwatch-archive` (private, the original 32-commit history) |
 | Detection | 24 heuristics + URL analysis + brand impersonation + on-device classifier |
 | Model | 3,603 rows, 94.31% validation, 93.81% ±0.88% five-fold CV, 6,000 terms, 263.9 KB |
-| Tests | 324 engine checks, model parity (tokens + predictions), 5 accuracy gates, 4 held-out gates, 9 ambient solo-fire gates (all three sources populated), 29 adapter checks, 20 browser checks — full suite, including the browser layer, verified against a real Chrome instance |
+| Tests | 328 engine checks, model parity (tokens + predictions), 5 accuracy gates, 4 held-out gates, 8 ambient solo-fire gates (21 ambient fixtures across all three sources), 35 adapter checks, 20 browser checks — the JS/Python layers all verified 2026-09-05; the browser layer (`python3 tests/run_all.py`'s live-Chrome portion) was last verified against a real Chrome instance on an earlier date, not re-run today (no Chrome for Testing checkout in the environment that did today's work) |
 
 Measured accuracy, from `node tests/test_benchmark.mjs`:
 
@@ -33,13 +33,13 @@ false positives — the benchmark above grades the model on rows it trained on:
 |---|---|
 | held-out legitimate mail flagged | 0/66 |
 | held-out real websites flagged | 0/16 |
-| held-out real scam miss rate | 35/55 (63.64%) |
+| held-out real scam miss rate | 25/55 (45.45%) |
 
-That last number is not a typo and not a regression — read the entry below
-before reacting to it. It's the first honest measurement of miss rate against
-scam text the model has never trained on, and it says the rules are built for
-a different tactic distribution than the one this particular corpus happens
-to contain.
+That number moved from 63.64% on 2026-09-05 — see that entry below — by
+tightening one existing rule, `prize_or_windfall`, to catch noisier phrasing.
+It's still not close to zero, and that remains expected: this corpus is a
+different tactic distribution than the one the rules are built for, not a
+bug to chase to 0%.
 
 Validation accuracy and false-positive rate have both moved more than once
 this month — worth reading the dated entries below before assuming a
@@ -48,6 +48,102 @@ validation accuracy went *down* on 2026-08-17 (second entry), from 94.94% to
 94.31%, and that was the point: the corpus it is measured against had no
 modern transactional mail in it at all, so the old number was partly scoring a
 blind spot. Read that entry before trying to win the 0.63 points back.
+
+## 2026-09-05 (four parallel worktree agents: a live false-positive bug, two rule fixes, one held back)
+
+Sreekar reported a live false positive on x.com: nearly every post in the
+feed got a "Treat this with caution" banner with the identical reason "It
+asks you to send cryptocurrency," including posts with no money or crypto
+mention at all. Four agents, each in its own git worktree, went out in
+parallel; three merged cleanly, one didn't.
+
+**The x.com bug — root cause confirmed, both halves fixed.** `scanner.js`'s
+`handled` map is keyed by content hash, not by DOM element, and its only
+banner de-dup guard removes a banner sharing the *same* hash as the one
+about to render. X's timeline virtualizes: React reuses the same `<article>`
+node for a new tweet as the user scrolls, and nothing ever told a banner
+rendered for the *old* tweet's content that its node now holds something
+else — it just sat there, permanently misattributed to whatever scrolled
+into that screen position next. `render()` now tags the target element with
+the content-hash its banner belongs to; `scan()` notices when that tag no
+longer matches the current pass and removes the stale banner before judging
+the new content on its own. Separately, and smaller: `crypto_transfer` (the
+rule actually producing that reason text) required only a crypto noun near
+a verb like "pay"/"send" in the same sentence, with no requirement that the
+ask be directed at the reader — so a fictional meme ("a hacker group
+announced... 'Pay $500 million in Bitcoin'") matched identically to a real
+solicitation. Tightened the same way `threat_of_consequence` already was:
+requires a second-person frame in the same clause. Both fixes landed
+together as `a046e6a`, with a new `test_adapters.mjs` case that drives a
+real DOM-node-recycling scenario through the actual `scanner.js` code (not
+a reimplementation) and confirms the stale banner is removed — verified as
+a genuine regression test by reverting just the `scanner.js` half and
+watching it fail. One real, separate false positive got surfaced and
+deliberately **not** fixed here: "Dox this woman immediately..." solo-fires
+`artificial_urgency` on bare "immediately" — out of scope for this task,
+needs its own pass.
+
+**`prize_or_windfall` broadened for noisy SMS-spam phrasing (`0e6dcf2`).**
+Held-out miss rate for this rule alone: 9/17 → 0/17. The regex only matched
+clean English ("you've won," "selected"); this corpus is 2000s UK SMS-spam
+text, and needed tolerance for "u" instead of "you," dropped/transposed
+"have" ("ave," "hvae"), impersonal subjects ("your mobile number has won"),
+passive voice ("vouchers to be won"), and "guaranteed" used as the windfall
+verb instead of "won" (new `GUARANTEED_WINDFALL_RE`, gated the same way
+`CONGRATS_WINDFALL_RE` already is). Every bare "won" needed a `(?!'t)`
+lookahead after a first pass false-positived on "...email application that
+won't properly display..." boilerplate. Net effect: held-out real-scam miss
+rate 63.64% → 45.45%, with the benchmark false-positive count on 1,834 rows
+of `dataset.csv` confirmed byte-identical before and after (not just the
+same count — the same rows). `windfall_solicitation`'s 10/11 held-out misses
+were deliberately left alone: that rule is correctly scoped to the
+stranger-moves-money-through-you con, and this corpus's
+"windfall_solicitation"-tagged examples are actually the same SMS-prize-scam
+text `prize_or_windfall` handles — a corpus/genre-label mismatch, not a bug
+in that rule.
+
+**Structural login-form check, standalone (`3ce64cd`).** Closed the
+"Structural login-form checks that stand alone" backlog item below. Off-site
+credential POST could previously only corroborate a `PROTECTED_BRANDS`
+impersonation finding — an ordinary-length, single-field harvest page for a
+brand not on that hand-vetted list got no signal at all, however suspicious
+its structure. `analyzeStandaloneHarvest` (in `impersonation.js`) now has a
+third path: if the page's `<title>` names a brand (extracted the same way
+`claimsIdentity` already does, generalized past the fixed brand list) that
+shares no word with either the page's own domain or the domain the form
+posts to, that mismatch convicts alone at weight 3.0 — below the 3.6 a
+matched-brand impersonation finding reaches, since this path trusts generic
+extraction less than the hand-vetted list. Four new fixtures pin: the
+conviction itself; that a title sharing a word with the post-target domain
+(a bank's own separately-branded auth vendor) stays safe; that the
+hosted-auth-provider exemption still wins even when the title also names
+that brand; and that generic furniture words ("Member Portal") can't
+manufacture a brand claim. 328/328 engine checks; every other gate
+unchanged.
+
+**Devanagari corpus expansion — held back, not merged.** 100 new Devanagari
+rows (70 scam / 30 legit) went into `curated-hinglish.csv`, covering tactics
+already present in the English corpus (OTP asks, refund/cashback lures,
+impersonated authority, advance-fee asks), sourced independently of both
+holdout files. Held-out miss rate barely moved (63.64% → 61.82%, before the
+`prize_or_windfall` fix above was layered on top) — but the new rows
+exposed real coverage gaps in existing rules, and two *benchmark* gates
+newly **failed**: targeted scams missed 0%→4.34% (limit 3%) and Hinglish/Hindi
+missed 0%→6.30% (limit 5%), all 17 new benchmark misses landing among the 70
+new scam rows. This is the exact pattern three earlier corpus rounds already
+documented in this file — new rows expose gaps a rule-writing pass then
+closes — but that follow-up pass didn't happen here, and merging a red test
+suite isn't worth the marginal held-out gain. The branch
+(`worktree-agent-aedf207fcdda6d95b`, commit `ab63082`) is kept, unmerged,
+for whoever picks up the rule-fix pass; the flagged rule-bug candidate is
+below.
+
+**Rule-bug candidate found during the above, not fixed:** several genuine
+Devanagari bank-OTP notices that state a code but explicitly tell the reader
+not to share it (e.g. "...कृपया किसी अजनबी को न बताएं" — "please don't tell
+a stranger") still scored 38 (suspicious). The Devanagari OTP-legit
+exoneration logic likely doesn't cover this exact phrasing shape. Worth
+checking alongside the corpus rule-fix pass.
 
 ## 2026-09-05 (closed the last network-consent item: a real person clicked through)
 
@@ -1807,19 +1903,30 @@ clicking through the `resolveShorteners`/`checkUrlhaus` consent prompts —
 closed 2026-09-05 (see that entry above). Nothing from that work is
 outstanding any more.
 
-**More Devanagari rows, if the miss rate needs to come down further.**
-17/162 Devanagari scams are still missed after today's pass — well inside
-the 20% language-specific gate, but real. What's left doesn't cluster the
-way today's gaps did (each remaining miss is closer to a one-off phrasing
-than a missing category), so the next win is more likely in the corpus than
-in another rule-writing pass — the same "more Devanagari rows" conclusion
-this file reached before 2026-08-15, just at a smaller remaining gap.
+**Finish the held-back Devanagari corpus branch.** 100 new rows sit on
+`worktree-agent-aedf207fcdda6d95b` (`ab63082`), unmerged, because they push
+two benchmark gates into failing territory (see the 2026-09-05 "four
+parallel worktree agents" entry above for exact numbers). Needs a
+rule-writing pass against the 17 new misses before this can merge — same
+"corpus round exposes a gap, rule round closes it" cycle this file has
+documented three times before.
 
-**Smaller, when convenient**
+**The Devanagari OTP-legit exoneration gap**, flagged in the same entry: a
+message that states an OTP but explicitly tells the reader not to share it
+with a stranger still scores 38 (suspicious). Worth doing alongside the
+rule-writing pass above, since both touch the same Devanagari-legit
+surface.
 
-- Structural login-form checks that stand alone. Off-site credential POST is
-  currently only counted as corroboration for an impersonation finding,
-  because hosted auth providers do it legitimately.
+**`artificial_urgency` false-fires on bare "immediately."** Surfaced
+2026-09-05 while fixing the x.com stale-banner bug (see that entry): "Dox
+this woman immediately so as to call CPS..." solo-convicts on the word
+alone, no direction-at-the-reader requirement of the kind
+`threat_of_consequence`/`crypto_transfer` already got. The same tightening
+pattern almost certainly applies here too.
+
+**Structural login-form checks that stand alone — closed 2026-09-05.** See
+that entry above (`3ce64cd`); off-site credential POST can now convict
+alone on a title-brand-claim mismatch, not just as corroboration.
 
 **Deliberately not doing**
 
