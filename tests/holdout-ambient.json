@@ -271,5 +271,18 @@
       "credentialFields": [],
       "formTargets": []
     }
+  },
+  {
+    "name": "X reply — urging readers to report a third party to CPS, not a scam pretext",
+    "site": "x.com",
+    "kind": "reply-thread",
+    "captured": "2026-09-05",
+    "text": "Dox this woman immediately so as to call CPS to save the child from further abuse.",
+    "page": {
+      "url": "https://x.com/i/status/0000000000000000000",
+      "title": "Post / X",
+      "credentialFields": [],
+      "formTargets": []
+    }
   }
 ]

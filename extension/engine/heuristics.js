@@ -725,6 +725,22 @@ const RULES = [
         // about. A scammer does not urge you to report them, so the urgency in
         // a report-this instruction always belongs to the defender.
         .replace(/\breport\s+(?:any\s+|all\s+)?(?:suspicious|fraudulent|fraud|phishing|unauthori[sz]ed|this|it)\b[^.!?]{0,40}/g, " ")
+        // "Dox this woman immediately so as to call CPS to save the child
+        // from further abuse." is an imperative urging the reader to act
+        // against a *third party* by reporting them to a protective
+        // authority — the same shape as the report-suspicious clause above,
+        // one authority-name wider (police/CPS/911 rather than a bank's own
+        // fraud line), and just as much the defender's urgency as the
+        // scammer's. Ambient false positive from an X reply thread. Strip
+        // both orderings, like CRYPTO_TRANSFER_RE checks both.
+        .replace(
+          /\b(?:immediately|urgent(?:ly)?)\b[^.!?]{0,60}\bcall\s*(?:the\s*)?(?:police|cops|cps|911|child\s*protective(?:\s*services)?|authorities)\b/g,
+          " "
+        )
+        .replace(
+          /\bcall\s*(?:the\s*)?(?:police|cops|cps|911|child\s*protective(?:\s*services)?|authorities)\b[^.!?]{0,60}\b(?:immediately|urgent(?:ly)?)\b/g,
+          " "
+        )
         // "Larger studies are urgently needed" / "urgently-needed food aid" is
         // a shortage, not a countdown: "urgently" modifies "needed" — a
         // reporter's judgment about a third-party situation — and no one is

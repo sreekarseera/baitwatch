@@ -1524,6 +1524,20 @@ check(
   `scored ${urgentInUrl.score}, fired: ${urgentInUrl.reasons.map((r) => r.id).join(", ") || "none"}`
 );
 
+// "Dox this woman immediately so as to call CPS..." urges the reader to
+// report a third party to a protective authority — a defender's urgency,
+// not a scam pretext about the reader's own account or money. Ambient
+// false positive from an X reply thread, 2026-09-05.
+const reportThirdPartyUrgency = await analyzeLocal(
+  "Dox this woman immediately so as to call CPS to save the child from further abuse."
+);
+check(
+  "urging the reader to report someone else to CPS is not manufactured urgency",
+  reportThirdPartyUrgency.verdict === VERDICT.SAFE &&
+    !reportThirdPartyUrgency.reasons.some((r) => r.id === "artificial_urgency"),
+  `scored ${reportThirdPartyUrgency.score}, fired: ${reportThirdPartyUrgency.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
 // Police verification is a step in getting a passport, not a threat.
 const passport = await analyzeLocal("आपका पासपोर्ट आवेदन स्वीकृत हो गया है। पुलिस सत्यापन के बाद पासपोर्ट भेजा जाएगा।");
 check(

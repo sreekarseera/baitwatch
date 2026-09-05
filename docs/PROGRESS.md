@@ -1917,12 +1917,23 @@ with a stranger still scores 38 (suspicious). Worth doing alongside the
 rule-writing pass above, since both touch the same Devanagari-legit
 surface.
 
-**`artificial_urgency` false-fires on bare "immediately."** Surfaced
-2026-09-05 while fixing the x.com stale-banner bug (see that entry): "Dox
-this woman immediately so as to call CPS..." solo-convicts on the word
-alone, no direction-at-the-reader requirement of the kind
-`threat_of_consequence`/`crypto_transfer` already got. The same tightening
-pattern almost certainly applies here too.
+**`artificial_urgency` false-firing on bare "immediately" — closed 2026-09-05.**
+"Dox this woman immediately so as to call CPS to save the child from further
+abuse." (the same X reply thread the stale-banner fix surfaced) solo-convicted
+on the bare word, with nothing distinguishing an imperative urging the reader
+to report a *third party* to a protective authority from a scam's manufactured
+countdown around the reader's own account. Rather than a general
+reader-direction gate (the `threat_of_consequence`/`crypto_transfer` shape),
+this rule is already built as a series of narrow, evidence-driven stripping
+exclusions — four of them already there (link/code/session expiry, "urgently
+needed" as a shortage, "X should immediately Y" about a third party, "report
+suspicious... immediately" as an anti-fraud notice) — so the fix added a fifth
+in the same shape: strip `immediately`/`urgent(ly)` when it co-occurs with a
+call to report someone else to police/CPS/911/authorities, either ordering.
+New fixture in `test_engine.mjs` and a new ambient entry in
+`holdout-ambient.json` pin it; every existing gate (including the two
+fixtures that must *keep* firing, `accountExpiry` and its Devanagari
+counterpart) stayed green with identical numbers.
 
 **Structural login-form checks that stand alone — closed 2026-09-05.** See
 that entry above (`3ce64cd`); off-site credential POST can now convict
