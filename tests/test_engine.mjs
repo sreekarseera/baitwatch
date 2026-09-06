@@ -1646,6 +1646,15 @@ for (const [name, message, rule] of [
   ["payroll redirect", "टीम, हमारा पेरोल पोर्टल बदल गया है, कृपया इस नए लिंक पर अपना सैलरी अकाउंट दोबारा रजिस्टर करें।", "payment_detail_change"],
   ["APK को डाउनलोड करके", "आयुष्मान भारत कार्ड फ्री बनवाएं, 5 लाख तक का इलाज मुफ्त। रजिस्ट्रेशन के लिए इस APK को डाउनलोड करके अपनी डिटेल भरें।", "unexpected_attachment_or_install"],
   ["घर वालों को मत बताना", "चाचा जी, मैं रोहन बोल रहा हूं, नया सिम लिया है। घर वालों को मत बताना, 25000 रुपये भेज दो।", "secrecy_request"],
+  // CREDENTIAL_NOUN_RE's Devanagari half had no word for "code" at all, so a
+  // scam asking for "कोड" rather than literally "OTP" never reached
+  // CREDENTIAL_TRANSMIT_RE — 6 of 17 held-back-corpus misses, 2026-09-06.
+  ["confirmation कोड, send to number", "SBI कार्ड रिवॉर्ड्स: आपके 8,200 पॉइंट्स कैश में बदले जा सकते हैं, बस SMS पर आया कन्फर्मेशन कोड इस नंबर पर भेजें।", "credential_request"],
+  ["कोड बताइए, scored 0 before this fix", "PhonePe सुरक्षा टीम: आपके खाते में असामान्य लॉगिन दिखा है, पुष्टि के लिए भेजा गया 6 अंकों का कोड बताइए।", "credential_request"],
+  ["कोड वापस भेजें", "आपका क्रेडिट कार्ड लिमिट बढ़ाने के लिए बैंक से भेजा गया कोड इसी नंबर पर वापस भेजें।", "credential_request"],
+  ["कोड शेयर करें", "आपका इंश्योरेंस प्रीमियम ऑटो-डेबिट फेल हुआ, दोबारा प्रयास हेतु भेजा गया कोड शेयर करें।", "credential_request"],
+  ["बैंक खाता वेरिफिकेशन कोड भेजें", "आपका बीमा क्लेम अप्रूव हो गया, राशि जमा करने के लिए बैंक खाता वेरिफिकेशन कोड भेजें।", "credential_request"],
+  ["कार्ड विवरण भेजें", "क्रेडिट कार्ड एनुअल फीस माफी की राशि वापस आनी है, प्रोसेस पूरा करने के लिए कार्ड विवरण भेजें।", "credential_request"],
 ]) {
   const scam = await analyzeLocal(message);
   check(
@@ -1654,6 +1663,21 @@ for (const [name, message, rule] of [
     `scored ${scam.score}, fired: ${scam.reasons.map((r) => r.id).join(", ") || "none"}`
   );
 }
+
+// The Devanagari half of the send/share verb inside CREDENTIAL_TRANSMIT_RE
+// used to be the shared HI.send constant — a bare stem match (भेज\w*) that
+// matches every conjugation, including the passive/narrative "was sent"
+// (भेजा गया). A real bank's own OTP notice describes the code that way, and
+// scored 38 (suspicious) on that alone before this fix, 2026-09-06.
+const devaOtpAdviceNotShared = await analyzeLocal(
+  "आपके ICICI खाते से लॉगिन सत्यापन हेतु OTP 630187 भेजा गया, कृपया किसी अजनबी को न बताएं।"
+);
+check(
+  "a Devanagari OTP notice describing itself as 'sent' (passive) is not a credential request",
+  devaOtpAdviceNotShared.verdict === VERDICT.SAFE &&
+    !devaOtpAdviceNotShared.reasons.some((r) => r.id === "credential_request"),
+  `scored ${devaOtpAdviceNotShared.score}, fired: ${devaOtpAdviceNotShared.reasons.map((r) => r.id).join(", ") || "none"}`
+);
 
 // The English fix for "this link expires in 24 hours" had no Devanagari half,
 // so a food-delivery app's own verification code was flagged for urgency.

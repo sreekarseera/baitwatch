@@ -134,8 +134,18 @@ const HI = {
   parcel: "parcel|package|courier|consignment|पार्सल|पैकेट|कूरियर|कोरियर|कस्टम(?!र)|कंसाइनमेंट",
 };
 
+// The Devanagari half was only ओटीपी|पिन|आधार|पासवर्ड (OTP/PIN/Aadhaar/
+// password) — no word for "code" or "card details" at all, so a message
+// asking for "कोड" (code) or "कार्ड विवरण" (card details) never reached
+// CREDENTIAL_TRANSMIT_RE, however plainly it asked. Measured against a
+// held-back Devanagari corpus round, 2026-09-06: 6 of 17 real-scam misses
+// asked for exactly this, one of them scoring 0 — nothing fired at all.
+// कोड bare is safe to add: every legitimate Devanagari row in this corpus
+// that says कोड (a bank's own OTP/verification-code notice, an IFSC-code
+// update confirmation) states the code with no transmit or entry verb
+// nearby, so the verb-side gate below still keeps them safe.
 const CREDENTIAL_NOUN_RE =
-  /\b(?:password|passcode|pin(?:\s*(?:number|code))?|otp|one[\s-]?time\s*(?:password|code|pin)|cvv|card\s*(?:number|details)|security\s*code|(?:confirmation|verification)\s*code|seed\s*phrase|recovery\s*phrase|private\s*key|aadhaar|ssn|social\s*security)\b|ओटीपी|पिन|आधार|पासवर्ड/;
+  /\b(?:password|passcode|pin(?:\s*(?:number|code))?|otp|one[\s-]?time\s*(?:password|code|pin)|cvv|card\s*(?:number|details)|security\s*code|(?:confirmation|verification)\s*code|seed\s*phrase|recovery\s*phrase|private\s*key|aadhaar|ssn|social\s*security)\b|ओटीपी|पिन|आधार|पासवर्ड|कोड|कार्ड\s*(?:विवरण|नंबर|डिटेल्स)/;
 
 // The secret leaving your possession, *towards whoever is asking*. The
 // direction is the whole signal: "send OTP to your registered mobile" is a real
@@ -143,13 +153,27 @@ const CREDENTIAL_NOUN_RE =
 // So the verb has to carry an indirect object pointing back at the sender. Bare
 // verbs matched far too much — including the word "email" sitting on the login
 // form of every site in the world.
+// Devanagari "send"/"share", imperative forms only — भेजें/भेजिए/भेज दो/भेज
+// दें, शेयर करें/कीजिए/कर दो/कर दें — deliberately *not* the shared
+// HI.send constant, which is a bare stem match (भेज\w*) other rules use where
+// that's the right call. Here it isn't: भेज\w* matches every conjugation
+// including the passive/narrative "was sent" (भेजा गया, भेजी गई), which is
+// exactly how a legitimate bank OTP message describes itself ("the code
+// that was sent to you") — measured flagging a real "OTP ... भेजा गया,
+// कृपया किसी अजनबी को न बताएं" notice at 38 (suspicious) on this alone,
+// 2026-09-06. An imperative has no passive form to collide with: भेजा/भेजी/
+// भेजने/शेयर किया are not in this list because they can't be, not because
+// they were excluded by hand.
+const CREDENTIAL_SEND_DEVANAGARI_RE =
+  "भेज(?:ें|िए)|भेज\\s*(?:दो|दें)|शेयर\\s*(?:करें|कीजिए|कर\\s*(?:दो|दें))";
+
 const CREDENTIAL_TRANSMIT_RE = new RegExp(
   "\\b(?:(?:send|forward|give|tell|text|whatsapp|email|message)\\s+(?:it\\s+)?(?:me|us|back|to\\s+(?:me|us))" +
     "|shar(?:e|ing)\\s+(?:your|the|it|with)|reply\\s+(?:with|back\\s+with)|revert\\s+with|provide\\s+(?:me|us))\\b" +
     // Hinglish has no indirect-object cue to lean on the way English does:
     // "OTP bhejiye" is already the entire request, with no "me" in it. The
     // imperative form carries the direction on its own.
-    `|${HI.send}|${HI.tell}`
+    `|${CREDENTIAL_SEND_DEVANAGARI_RE}|${HI.tell}`
 );
 
 // Verbs that describe typing a secret into a form. Damning in a message,
