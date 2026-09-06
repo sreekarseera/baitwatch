@@ -1664,6 +1664,21 @@ for (const [name, message, rule] of [
   );
 }
 
+// Adding कोड to CREDENTIAL_NOUN_RE made this a new false positive, 2026-09-06:
+// a real in-person courier return-pickup verification, not a remote ask.
+// Distinguish it from the near-identical "OTP शेयर करें" scam fixture two
+// entries above — that one says "callback", this one says "पिकअप" — by the
+// physical-handoff phrase, not by the word "एग्जीक्यूटिव" itself (both
+// messages have it).
+const devaInPersonPickup = await analyzeLocal(
+  "Flipkart रिटर्न पिकअप OTP 274091 है, सामान वापस लेते समय एग्जीक्यूटिव को यह कोड बताएं।"
+);
+check(
+  "an in-person courier return-pickup OTP is not a credential request",
+  !devaInPersonPickup.reasons.some((r) => r.id === "credential_request"),
+  `scored ${devaInPersonPickup.score}, fired: ${devaInPersonPickup.reasons.map((r) => r.id).join(", ") || "none"}`
+);
+
 // The Devanagari half of the send/share verb inside CREDENTIAL_TRANSMIT_RE
 // used to be the shared HI.send constant — a bare stem match (भेज\w*) that
 // matches every conjugation, including the passive/narrative "was sent"

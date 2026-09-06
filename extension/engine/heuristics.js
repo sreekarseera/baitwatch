@@ -153,19 +153,20 @@ const CREDENTIAL_NOUN_RE =
 // So the verb has to carry an indirect object pointing back at the sender. Bare
 // verbs matched far too much — including the word "email" sitting on the login
 // form of every site in the world.
-// Devanagari "send"/"share", imperative forms only — भेजें/भेजिए/भेज दो/भेज
-// दें, शेयर करें/कीजिए/कर दो/कर दें — deliberately *not* the shared
-// HI.send constant, which is a bare stem match (भेज\w*) other rules use where
-// that's the right call. Here it isn't: भेज\w* matches every conjugation
-// including the passive/narrative "was sent" (भेजा गया, भेजी गई), which is
-// exactly how a legitimate bank OTP message describes itself ("the code
-// that was sent to you") — measured flagging a real "OTP ... भेजा गया,
-// कृपया किसी अजनबी को न बताएं" notice at 38 (suspicious) on this alone,
-// 2026-09-06. An imperative has no passive form to collide with: भेजा/भेजी/
-// भेजने/शेयर किया are not in this list because they can't be, not because
-// they were excluded by hand.
+// Devanagari "send"/"share", imperative forms only — भेजें/भेजिए/भेज
+// दो/दें/दीजिए, शेयर/साझा करें/कीजिए/कर दो/कर दें/कर दीजिए (साझा alongside
+// the शेयर loanword — CREDENTIAL_ADVICE_RE already treats them as
+// equivalent) — deliberately *not* the shared HI.send constant, which is a
+// bare stem match (भेज\w*) other rules use where that's the right call. Here
+// it isn't: भेज\w* matches every conjugation including the passive/narrative
+// "was sent" (भेजा गया, भेजी गई), which is exactly how a legitimate bank OTP
+// message describes itself ("the code that was sent to you") — measured
+// flagging a real "OTP ... भेजा गया, कृपया किसी अजनबी को न बताएं" notice at
+// 38 (suspicious) on this alone, 2026-09-06. An imperative has no passive
+// form to collide with: भेजा/भेजी/भेजने/शेयर किया are not in this list
+// because they can't be, not because they were excluded by hand.
 const CREDENTIAL_SEND_DEVANAGARI_RE =
-  "भेज(?:ें|िए)|भेज\\s*(?:दो|दें)|शेयर\\s*(?:करें|कीजिए|कर\\s*(?:दो|दें))";
+  "भेज(?:ें|िए)|भेज\\s*(?:दो|दें|दीजिए)|(?:शेयर|साझा)\\s*(?:करें|कीजिए|कर\\s*(?:दो|दें|दीजिए))";
 
 const CREDENTIAL_TRANSMIT_RE = new RegExp(
   "\\b(?:(?:send|forward|give|tell|text|whatsapp|email|message)\\s+(?:it\\s+)?(?:me|us|back|to\\s+(?:me|us))" +
@@ -208,6 +209,20 @@ const CREDENTIAL_ADVICE_RE = new RegExp(
     "|\\b(?:na|nahi|mat|kabhi)\\s+(?:bata\\w*|bhej\\w*|share\\s*kar\\w*)" +
     "|(?:न|नहीं|मत)\\s*(?:बता|भेज|शेयर|साझा|दे)"
 );
+
+// A courier/delivery executive present *in person* to verify a return or
+// pickup is not a remote phishing ask — "tell this code to the executive
+// when handing back the item" is how Flipkart/Amazon's own return-pickup
+// verification actually works, and a real row of that shape solo-fired
+// credential_request at 37 (suspicious) once कोड joined CREDENTIAL_NOUN_RE,
+// 2026-09-06. The gate is the physical-handoff phrase itself
+// (रिटर्न पिकअप / सामान वापस लेते समय / पिकअप के समय) in the same sentence
+// as the tell/give verb — a phone "callback" refund scam that also mentions
+// "एग्जीक्यूटिव" has none of these, so gating on the handoff phrase rather
+// than the word "एग्जीक्यूटिव" itself keeps that scam (see the "OTP शेयर
+// करें" fixture below) firing correctly.
+const IN_PERSON_PICKUP_RE =
+  /(?:रिटर्न\s*पिकअप|सामान\s*वापस\s*लेते\s*समय|पिकअप\s*के\s*समय)[^।.!?]{0,60}(?:बता|दे)/;
 
 // Same-sentence gate, not "anywhere in the message" — a real crypto
 // brokerage's routine account email says "crypto" (their own product line,
@@ -614,7 +629,9 @@ const RULES = [
       // request, rather than skipping the message wholesale when advice is
       // present. A scammer who pastes a real bank footer under their own ask
       // still gets caught on the ask; the footer alone convicts nobody.
-      const asked = t.replace(new RegExp(CREDENTIAL_ADVICE_RE, "g"), " ");
+      const asked = t
+        .replace(new RegExp(CREDENTIAL_ADVICE_RE, "g"), " ")
+        .replace(new RegExp(IN_PERSON_PICKUP_RE, "g"), " ");
       // On a page that has a real login form, "enter your password" is what
       // every legitimate sign-in page in the world says. Judged as a message
       // it reads as a credential request, which made the rule fire on the
@@ -1074,9 +1091,18 @@ const RULES = [
     weight: 2.0,
     why: "It says a delivery needs money or re-confirmation before it can reach you. Couriers do not charge you to re-attempt a delivery — the fee is the scam, and the page that collects it collects your card.",
     test: (t) => {
+      // HI.parcel covers the courier/package nouns (पार्सल, कूरियर, ...) but
+      // had no Devanagari word for "deliver" itself — the gate silently
+      // never opened for a scam that only ever says डिलीवर/डिलीवरी. Checked
+      // against every legitimate डिलीवर mention in dataset.csv first: all of
+      // them fail the failed/action/payment count below regardless (an
+      // ordinary "delivered today, rate your experience" has none of the
+      // three), so this only widens which messages *reach* that check, not
+      // which ones pass it.
       if (
         !/\b(?:deliver(?:y|ed|ies)?|dispatch|shipment)\b/.test(t) &&
-        !new RegExp(HI.parcel).test(t)
+        !new RegExp(HI.parcel).test(t) &&
+        !/डिलीवर/.test(t)
       ) {
         return false;
       }
