@@ -3,7 +3,7 @@
 Where the project stands and what is worth doing next. For how it works, see
 the root [`README.md`](../README.md); this file is the running log.
 
-Last updated **2026-09-05**.
+Last updated **2026-09-06**.
 
 ## Current state
 
@@ -12,19 +12,26 @@ Last updated **2026-09-05**.
 | Repo | `github.com/sreekarseera/baitwatch` (public, MIT) |
 | Archive | `github.com/sreekarseera/baitwatch-archive` (private, the original 32-commit history) |
 | Detection | 24 heuristics + URL analysis + brand impersonation + on-device classifier |
-| Model | 3,603 rows, 94.31% validation, 93.81% ±0.88% five-fold CV, 6,000 terms, 263.9 KB |
-| Tests | 328 engine checks, model parity (tokens + predictions), 5 accuracy gates, 4 held-out gates, 8 ambient solo-fire gates (21 ambient fixtures across all three sources), 35 adapter checks, 20 browser checks — the JS/Python layers all verified 2026-09-05; the browser layer (`python3 tests/run_all.py`'s live-Chrome portion) was last verified against a real Chrome instance on an earlier date, not re-run today (no Chrome for Testing checkout in the environment that did today's work) |
+| Model | 3,703 rows, 94.33% validation, 93.79% ±1.55% five-fold CV (100 new Devanagari rows merged 2026-09-06 — see that entry below) |
+| Tests | 337 engine checks, model parity (tokens + predictions, 3,735 inputs, 0 disagreements), 5 accuracy gates, 4 held-out gates, ambient solo-fire gates (21 ambient fixtures across all three sources), 35 adapter checks, 20 browser checks — the JS/Python layers all verified 2026-09-06; the browser layer (`python3 tests/run_all.py`'s live-Chrome portion) was last verified against a real Chrome instance on an earlier date, not re-run today (no Chrome for Testing checkout in the environment that did today's work) |
 
 Measured accuracy, from `node tests/test_benchmark.mjs`:
 
 | | rate |
 |---|---|
-| legitimate mail flagged | 0.49% |
+| legitimate mail flagged | 0.48% |
 | …called *dangerous* | 0.16% |
-| targeted scams missed | 0.00% |
-| Hinglish/Hindi scams missed | 0.00% |
-| …devanagari alone | 0/170 |
-| false alarms on ordinary Hinglish | 1/122 |
+| targeted scams missed | 2.89% |
+| Hinglish/Hindi scams missed | 4.07% |
+| …devanagari alone | 11/240 |
+| false alarms on ordinary Hinglish | 2/152 |
+
+The targeted/Hinglish miss rates are no longer 0% — they were while the
+corpus sat at its 2026-09-01 size; merging 100 more Devanagari rows
+2026-09-06 pushed both gates into failing territory before a rule pass (see
+that entry below) brought them back under their limits with real headroom
+to spare, not zero. That's expected, not a regression: a bigger, harder
+corpus with a non-zero pass is worth more than a smaller one scoring 0%.
 
 And from `node tests/test_holdout.mjs`, which is the number to trust for
 false positives — the benchmark above grades the model on rows it trained on:
@@ -33,11 +40,11 @@ false positives — the benchmark above grades the model on rows it trained on:
 |---|---|
 | held-out legitimate mail flagged | 0/66 |
 | held-out real websites flagged | 0/16 |
-| held-out real scam miss rate | 25/55 (45.45%) |
+| held-out real scam miss rate | 24/55 (43.64%) |
 
-That number moved from 63.64% on 2026-09-05 — see that entry below — by
-tightening one existing rule, `prize_or_windfall`, to catch noisier phrasing.
-It's still not close to zero, and that remains expected: this corpus is a
+That number keeps moving as existing rules get tightened (63.64% →
+45.45% → 43.64% across 2026-09-05/06) — see the dated entries below. It's
+still not close to zero, and that remains expected: this corpus is a
 different tactic distribution than the one the rules are built for, not a
 bug to chase to 0%.
 
@@ -48,6 +55,82 @@ validation accuracy went *down* on 2026-08-17 (second entry), from 94.94% to
 94.31%, and that was the point: the corpus it is measured against had no
 modern transactional mail in it at all, so the old number was partly scoring a
 blind spot. Read that entry before trying to win the 0.63 points back.
+
+## 2026-09-06 (closed the held-back Devanagari branch and the OTP-legit gap — one shared root cause)
+
+The two items left in "Next" below were linked, and turned out to share one
+root cause. Ran the held-back corpus branch's failing benchmark and printed
+all 17 Devanagari misses in full, with which rule (if any) fired: **16 of 17
+fired nothing at all.** Two bugs in `extension/engine/heuristics.js`,
+diagnosed together:
+
+1. `CREDENTIAL_NOUN_RE`'s Devanagari half was only ओटीपी|पिन|आधार|पासवर्ड —
+   no word for "code" at all, so 6 of the 17 misses (asking for "कोड" rather
+   than literally "OTP") never reached `CREDENTIAL_TRANSMIT_RE` — one scored
+   0, nothing fired.
+2. `CREDENTIAL_TRANSMIT_RE`'s Devanagari send/share verb was the shared
+   `HI.send` constant — a bare stem match (भेज\w*) that matches every
+   conjugation, including the passive/narrative "was sent" (भेजा गया) — which
+   is how a legitimate bank OTP notice describes itself. This is the actual
+   mechanism behind the flagged OTP-legit false positive (a "please don't
+   tell a stranger" notice scoring 38).
+
+Widening the noun list without also fixing the verb would have made the
+false-positive gap worse, not better — more Devanagari messages would reach
+the transmit check, straight into its existing bug. Fixed both together:
+added कोड/कार्ड विवरण to the noun list, and gave `CREDENTIAL_TRANSMIT_RE` its
+own imperative-only Devanagari pattern (भेजें/भेजिए/भेज दो/दें/दीजिए, शेयर/
+साझा करें/कीजिए/कर दो/दें/दीजिए) instead of the shared bare `HI.send` — an
+imperative has no passive form to collide with. `HI.send` itself is
+untouched; other rules using it bare is the correct call there.
+
+Running the full suite after merging the corpus round on top surfaced two
+more, both fixed the same session: the imperative list was initially missing
+दीजिए and साझा, regressing two rows the old bare pattern happened to still
+catch; and `delivery_redispatch_fee` turned out to have no Devanagari word
+for "deliver" at all (only parcel/courier nouns) — a row asking for a
+redispatch fee had only ever been caught by *accident*, via
+`credential_request` bare-matching unrelated "पिन" (postal code) and
+"भेजने" (resend), both of which correctly stopped matching once the verb
+became imperative-only. Added डिलीवर to that gate too, checked against every
+legitimate डिलीवर mention in the corpus first (all fail the rule's
+2-of-3 substantive check regardless). A third new false positive also
+surfaced — कोड joining the noun list turned a real in-person courier
+return-pickup verification into a solo `credential_request` conviction.
+Fixed with a narrow exclusion gated on the physical-handoff phrase itself
+(रिटर्न पिकअप / सामान वापस लेते समय), not the word "एग्जीक्यूटिव" — a
+phone-callback refund scam also uses that word and must keep firing, and
+does.
+
+Devanagari real-scam miss rate: 17/240 → 11/240. Both benchmark gates the
+corpus round failed now pass (targeted 2.89%/limit 3%, Hinglish/Hindi
+4.07%/limit 5%). Held-out miss rate 45.45% → 43.64%. Full suite green: 337
+engine checks (10 new fixtures), benchmark, holdout, ambient, adapters, and
+parity (3,735 inputs, 0 disagreements).
+
+**The remaining 11 Devanagari misses are a separate, later task** — they
+span several different rules rather than one shared cause, so a future pass
+should expect several small fixes, not one:
+- `impersonated_authority`: generalize the "X बोल रहा हूं" claim pattern past
+  bank/HR (misses named "बिजली विभाग निरीक्षक", an electricity-department
+  inspector, and an HR caller), and add more named agencies (नारकोटिक्स
+  कंट्रोल ब्यूरो, फूड सेफ्टी विभाग) alongside the existing इनकम टैक्स/RBI/TRAI
+  set — one miss (इनकम टैक्स नोटिस) already fires this rule but scores too
+  low alone; check whether `threat_of_consequence` should also fire for it.
+- `upi_collect_request`: needs a "press yes on the request" accept-equivalent
+  (रिक्वेस्ट पर हां दबाएं / रिक्वेस्ट स्वीकारें) and Devanagari रिफंड/कैशबैक
+  nouns — its brand-name branch currently only recognizes accept-equivalents
+  spelled स्वीकार/एक्सेप्ट.
+- `refund_callback`: needs a callback-within-a-window phrasing ("5 मिनट में
+  इस नंबर पर कॉल करें", a fake bank-fraud-alert callback) and a train-ticket/
+  refund-pending-callback phrasing.
+- `investment_scam`: needs a "guaranteed X in N months" ROI pattern
+  ("प्राइवेट इक्विटी फंड में...2 महीने में 1.5 लाख").
+- `job_advance_fee`: needs an interview/security-deposit pattern ("इंटरव्यू
+  सिलेक्ट हो गया...सिक्योरिटी डिपॉजिट जमा करें") — check whether this is
+  already close to firing and just under-weighted.
+- `prize_or_windfall`: needs "सब्सिडी" (subsidy) added to its Devanagari
+  refund/reward gate ("गैस सिलेंडर सब्सिडी...यह लिंक खोलें").
 
 ## 2026-09-05 (four parallel worktree agents: a live false-positive bug, two rule fixes, one held back)
 
@@ -1903,19 +1986,16 @@ clicking through the `resolveShorteners`/`checkUrlhaus` consent prompts —
 closed 2026-09-05 (see that entry above). Nothing from that work is
 outstanding any more.
 
-**Finish the held-back Devanagari corpus branch.** 100 new rows sit on
-`worktree-agent-aedf207fcdda6d95b` (`ab63082`), unmerged, because they push
-two benchmark gates into failing territory (see the 2026-09-05 "four
-parallel worktree agents" entry above for exact numbers). Needs a
-rule-writing pass against the 17 new misses before this can merge — same
-"corpus round exposes a gap, rule round closes it" cycle this file has
-documented three times before.
+**The held-back Devanagari corpus branch and the OTP-legit exoneration
+gap — both closed 2026-09-06.** See that entry above: one shared root cause
+(`CREDENTIAL_NOUN_RE`/`CREDENTIAL_TRANSMIT_RE`'s Devanagari coverage),
+merged onto `main` together.
 
-**The Devanagari OTP-legit exoneration gap**, flagged in the same entry: a
-message that states an OTP but explicitly tells the reader not to share it
-with a stranger still scores 38 (suspicious). Worth doing alongside the
-rule-writing pass above, since both touch the same Devanagari-legit
-surface.
+**11 Devanagari misses remain, deliberately deferred to a later pass** — see
+the 2026-09-06 entry above for the full list and which rule each one needs
+(`impersonated_authority`, `upi_collect_request`, `refund_callback`,
+`investment_scam`, `job_advance_fee`, `prize_or_windfall`). Unlike the pair
+above, these don't share one cause — expect several small fixes, not one.
 
 **`artificial_urgency` false-firing on bare "immediately" — closed 2026-09-05.**
 "Dox this woman immediately so as to call CPS to save the child from further
