@@ -3,7 +3,7 @@
 Where the project stands and what is worth doing next. For how it works, see
 the root [`README.md`](../README.md); this file is the running log.
 
-Last updated **2026-09-06**.
+Last updated **2026-10-13**.
 
 ## Current state
 
@@ -21,9 +21,9 @@ Measured accuracy, from `node tests/test_benchmark.mjs`:
 |---|---|
 | legitimate mail flagged | 0.48% |
 | …called *dangerous* | 0.16% |
-| targeted scams missed | 2.89% |
-| Hinglish/Hindi scams missed | 4.07% |
-| …devanagari alone | 11/240 |
+| targeted scams missed | 0.24% |
+| Hinglish/Hindi scams missed | 0.00% |
+| …devanagari alone | 0/240 |
 | false alarms on ordinary Hinglish | 2/152 |
 
 The targeted/Hinglish miss rates are no longer 0% — they were while the
@@ -55,6 +55,45 @@ validation accuracy went *down* on 2026-08-17 (second entry), from 94.94% to
 94.31%, and that was the point: the corpus it is measured against had no
 modern transactional mail in it at all, so the old number was partly scoring a
 blind spot. Read that entry before trying to win the 0.63 points back.
+
+## 2026-10-13 (closed the last 11 Devanagari misses, one small fix per rule)
+
+Re-cloned the repo (the local `hackathon/` directory was gone) and worked
+through the 11 deferred misses listed in the 2026-09-06 entry. As predicted,
+no shared cause — each was a gap in one rule's Devanagari vocabulary, fixed in
+`extension/engine/heuristics.js` without adding a rule or a category:
+
+- `job_advance_fee`: डिपॉजिट/सिक्योरिटी added to the "something is being paid"
+  clause (the Latin `deposit`/`security` could never match).
+- `prize_or_windfall`: सब्सिडी with a 70-char window to a link/claim call to
+  action (the amount sits between the noun and the link).
+- `impersonated_authority`: an organisation word before "बोल रहा/रही हूं" (not a
+  bare name), and नारकोटिक्स कंट्रोल ब्यूरो / फूड सेफ्टी विभाग **as a sender
+  label only**, so a news report naming the bureau does not convict.
+- `threat_of_consequence`: "पेनल्टी / जुर्माने से बचने" within 60 chars of a
+  notice/department word. This also covers the income-tax notice that already
+  fired `impersonated_authority` but scored 28.
+- `upi_collect_request`: "रिक्वेस्ट पर हां दबाएं" and imperative स्वीकारें/स्वीकारिए.
+- `refund_callback`: डेबिट हुए/हुई, refund-pending-then-callback, and
+  fraud-alert-then-call phrasing.
+- `investment_scam`: "put N in, get M back within N months" (लगाएं … महीने में … पाएं).
+
+Result: Devanagari 11/240 → 0/240, targeted 12/415 → 1/415, false positives
+unchanged at 9/1864 (0.48%), held-out and ambient gates unchanged, parity
+untouched (no model or tokenizer change). 15 new engine fixtures (11 positives,
+4 controls).
+
+**Read the 0/240 honestly.** These fixes were derived from the very rows they
+now catch, so the in-sample number says "no known miss remains", not "no miss
+exists". The held-out scam corpus (`tests/holdout-scams.csv`) was not touched
+and is the number to trust. Each fix is a vocabulary or window change inside an
+existing rule, which is the shape the earlier entries argue is safe.
+
+**Found while doing this, not fixed:** an ordinary Devanagari electricity-bill
+reminder ("लेट फीस से बचने के लिए समय पर भुगतान करें") scores 36 on the model
+alone with no rule firing, i.e. a classifier false positive on Devanagari. The
+rule fixes neither cause nor cure it. Worth measuring on held-out Devanagari
+legitimate text before touching anything.
 
 ## 2026-09-06 (closed the held-back Devanagari branch and the OTP-legit gap — one shared root cause)
 

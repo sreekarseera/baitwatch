@@ -1839,6 +1839,48 @@ check(
 
 /* ---------------------------------- report --------------------------------- */
 
+// The last eleven Devanagari misses (2026-10-13). Each pins the rule that now
+// fires, and the controls pin the near-neighbours that must stay quiet.
+const devanagariFixes = [
+  ["refund_callback", "बैंक अलर्ट: आपके खाते से 9,999 रुपये किसी अनजान ऐप से डेबिट हुए हैं। धोखाधड़ी होने पर 5 मिनट में इस नंबर पर कॉल करें, पैसा रोका जा सकता है।"],
+  ["investment_scam", "हमारे प्राइवेट इक्विटी फंड में 50000 रुपये लगाएं और 2 महीने में 1.5 लाख पाएं, सीमित सीटें बची हैं, अभी रजिस्टर करें।"],
+  ["refund_callback", "आपकी ट्रेन टिकट कैंसिलेशन की राशि रिफंड होनी बाकी है, प्रोसेस पूरा करने के लिए कॉलबैक करें।"],
+  ["upi_collect_request", "PhonePe से रिफंड 1,200 रुपये भेजा जा रहा है, राशि पाने के लिए भेजी गई रिक्वेस्ट पर हां दबाएं।"],
+  ["upi_collect_request", "आपकी वार्षिक मेंबरशिप फीस गलती से दो बार कटी है, अतिरिक्त राशि वापस पाने हेतु रिक्वेस्ट स्वीकारें।"],
+  ["prize_or_windfall", "आपके गैस सिलेंडर सब्सिडी की बकाया राशि 240 रुपये जमा होनी है, प्राप्त करने के लिए यह लिंक खोलें।"],
+  ["impersonated_authority", "नारकोटिक्स कंट्रोल ब्यूरो: आपके कूरियर पार्सल में प्रतिबंधित सामान मिला है, कानूनी कार्रवाई रोकने हेतु अभी बात करें।"],
+  ["impersonated_authority", "बिजली विभाग निरीक्षक बोल रहा हूं, आपके मीटर में छेड़छाड़ पाई गई है, जुर्माने से बचने के लिए अभी भुगतान करें।"],
+  ["threat_of_consequence", "इनकम टैक्स नोटिस: आपकी फाइलिंग में गड़बड़ी मिली है, पेनल्टी से बचने के लिए आज अंतिम तारीख है।"],
+  ["impersonated_authority", "फूड सेफ्टी विभाग: आपके रेस्टोरेंट लाइसेंस में शिकायत दर्ज हुई है, निरीक्षण टालने के लिए अभी संपर्क करें।"],
+  ["job_advance_fee", "HR टीम से बोल रही हूं, आपका इंटरव्यू सिलेक्ट हो गया, ऑफर लेटर से पहले सिक्योरिटी डिपॉजिट जमा करें।"],
+];
+for (const [rule, text] of devanagariFixes) {
+  const r = await analyzeLocal(text);
+  check(
+    `Devanagari scam flagged via ${rule}: ${text.slice(0, 24)}…`,
+    r.verdict !== VERDICT.SAFE && r.reasons.some((x) => x.id === rule),
+    `scored ${r.score}, fired: ${r.reasons.map((x) => x.id).join(", ") || "none"}`
+  );
+}
+const devanagariControls = [
+  "आपके बिजली बिल की अंतिम तिथि 20 तारीख है, लेट फीस से बचने के लिए समय पर भुगतान करें।",
+  "रवि से बोल रहा हूं, कल शाम की मीटिंग का समय बदल गया है।",
+  "नारकोटिक्स कंट्रोल ब्यूरो ने कल दिल्ली में तस्करी के एक गिरोह का भंडाफोड़ किया।",
+  "आपके खाते में गैस सब्सिडी 240 रुपये जमा हो गई है।",
+];
+for (const text of devanagariControls) {
+  const r = await analyzeLocal(text);
+  // Asserted on rules, not the verdict: the bill reminder scores 36 on the
+  // model alone (no rule fires), a pre-existing classifier false positive on
+  // Devanagari that these rule fixes neither cause nor claim to cure.
+  check(
+    `Devanagari control fires no rule: ${text.slice(0, 24)}…`,
+    r.reasons.length === 0,
+    `scored ${r.score}, fired: ${r.reasons.map((x) => x.id).join(", ") || "none"}`
+  );
+}
+
+
 const total = passed + failures.length;
 console.log(`\n${passed}/${total} checks passed`);
 

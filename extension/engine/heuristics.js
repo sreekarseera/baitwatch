@@ -662,7 +662,7 @@ const RULES = [
       (new RegExp(`\\b(?:upi|gpay|google\\s*pay|phonepe|paytm|bhim|qr\\s*code)\\b|यूपीआई|क्यूआर|कलेक्ट\\s*रिक्वेस्ट`).test(t) &&
       new RegExp(
         `\\b(?:collect\\s*request|accept|approve|scan|enter\\s*(?:your\\s*)?pin|receive|refund|cashback)\\b` +
-        `|${HI.enter}|स्वीकार|स्कैन|एक्सेप्ट`
+        `|${HI.enter}|स्वीकार|स्कैन|एक्सेप्ट|हां\\s*दबा|रिक्वेस्ट\\s*पर\\s*हां`
       ).test(t)) ||
       // The classic OLX/marketplace version names no UPI app at all — "I'm
       // sending the payment, just accept the request on your screen" — so the
@@ -670,7 +670,7 @@ const RULES = [
       // accept ("एक्सेप्ट कर दीजिए"), which is what keeps a routine "आपकी
       // रिक्वेस्ट स्वीकार कर ली गई है" ("your request has been accepted", a
       // completed passive) from firing on the same two words.
-      (/(?:रिक्वेस्ट|request)[^।.!?]{0,40}(?:एक्सेप्ट|स्वीकार|accept)\s*कर\s*(?:दीजिए|दीजिये|दो|दें|ें|िए)/.test(t) &&
+      (/(?:रिक्वेस्ट|request)[^।.!?]{0,40}(?:(?:एक्सेप्ट|स्वीकार|accept)\s*कर\s*(?:दीजिए|दीजिये|दो|दें|ें|िए)|स्वीकार(?:ें|िए)|हां\s*दबा)/.test(t) &&
         // Money has to be in the message, or this is a meeting invite. "मीटिंग
         // रिक्वेस्ट एक्सेप्ट कर दीजिए" is the same imperative in the same
         // words, and scored 35 on the first version of this branch. The tactic
@@ -830,7 +830,12 @@ const RULES = [
       // "supreme court" and "warrant" are the English words the gated branch
       // above already owns, and letting them through a second time ungated
       // would undo the gate.
-      new RegExp(HI.policeDevanagari).test(t),
+      new RegExp(HI.policeDevanagari).test(t) ||
+      // "पेनल्टी / जुर्माने से बचने" (to avoid the penalty / fine) next to a
+      // notice or department is the threat with the arrest swapped for money.
+      // Needs the notice/department word: a bill reminder that mentions a late
+      // fee has neither.
+      /(?:नोटिस|विभाग|आयकर|इनकम\s*टैक्स)[^।.!?]{0,60}(?:पेनल्टी|जुर्माने?)\s*से\s*बचने/.test(t),
   },
   {
     id: "prize_or_windfall",
@@ -880,7 +885,11 @@ const RULES = [
       // word रिफंड never appears, and क्लिक/लॉगिन belong beside the other
       // calls to action: a real refund notice tells you money is coming, it
       // does not route you through a login page to collect it.
-      new RegExp(`(?:रिफंड|रिवॉर्ड|बोनस|कैशबैक|पॉइंट्स|वापस\\s*पान[ेा])[^.!?]{0,45}(?:क्लेम|रिडीम|लिंक|apk|डाउनलोड|फॉर्म|वेरिफ|एक्सपायर|पिन|क्लिक|लॉगिन|लॉग\\s*इन)`).test(t),
+      new RegExp(`(?:रिफंड|रिवॉर्ड|बोनस|कैशबैक|पॉइंट्स|वापस\\s*पान[ेा])[^.!?]{0,45}(?:क्लेम|रिडीम|लिंक|apk|डाउनलोड|फॉर्म|वेरिफ|एक्सपायर|पिन|क्लिक|लॉगिन|लॉग\\s*इन)`).test(t) ||
+      // सब्सिडी (subsidy) is the same unexpected-money lure, but the amount and
+      // "to receive it" sit between the noun and the link, so it gets a wider
+      // window than the nouns above. Still requires the link/claim call to action.
+      /सब्सिडी[^.!?]{0,70}(?:क्लेम|लिंक|apk|डाउनलोड|फॉर्म|वेरिफ|क्लिक|लॉगिन)/.test(t),
   },
   {
     id: "advance_fee",
@@ -936,7 +945,17 @@ const RULES = [
         // The Devanagari half needs no gate for the reason given on
         // HI.policeDevanagari, and "se bol raha hoon" / "से बोल रहा हूं" is
         // itself the claim this rule is named for, already in the right shape.
-        new RegExp(`${HI.policeDevanagari}|bank\\s*se\\s*bol|बैंक\\s*से\\s*बोल|hr\\s*se\\s*bol|कस्टम(?!र)|इनकम\\s*टैक्स|आयकर`).test(t)),
+        new RegExp(`${HI.policeDevanagari}|bank\\s*se\\s*bol|बैंक\\s*से\\s*बोल|hr\\s*se\\s*bol|कस्टम(?!र)|इनकम\\s*टैक्स|आयकर`).test(t) ||
+        // The same "I am calling from X" claim with a department or team in
+        // place of a bank: "HR टीम से बोल रही हूं", "बिजली विभाग निरीक्षक बोल
+        // रहा हूं". Gated on an organisation word before the claim so a person's
+        // name ("रवि से बोल रहा हूं") doesn't read as an agency. A department
+        // that only *sends* a notice is not matched — the claim is the act.
+        /(?:टीम|विभाग|बैंक|कंपनी|ब्यूरो|कार्यालय|निरीक्षक|अधिकारी|एचआर|\bhr)\s*(?:से\s*)?बोल\s*रह[ाी]\s*हू/.test(t) ||
+        // A named enforcement or licensing body as the message's sender label
+        // ("नारकोटिक्स कंट्रोल ब्यूरो: ..."). Sender-label shape only, so a news
+        // report that merely mentions the bureau doesn't convict.
+        /(?:^|[\n।])\s*(?:नारकोटिक्स\s*कंट्रोल\s*ब्यूरो|फूड\s*सेफ्टी\s*विभाग)\s*[:：]/.test(t)),
   },
   {
     id: "secrecy_request",
@@ -1150,7 +1169,9 @@ const RULES = [
         // the Hindi words for it — these are loanwords, not translations.
         /घर\s*बैठे|काम\s*कर|कमा(?:एं|इए|ओ)|नौकरी|जॉब|इंटरव्यू|सिलेक्ट|सैलरी|पार्ट\s*टाइम|टास्क|वर्क\s*फ्रॉम\s*होम/.test(t)) &&
       (/\b(?:pay|deposit|paying|charge|fee|amount|registration|security|refundable|membership|joining|advance)\b/.test(t) ||
-        new RegExp(`${HI.fee}|${HI.money}|registration|रजिस्ट्रेशन|जॉइनिंग|किट`).test(t)) &&
+        // डिपॉजिट/सिक्योरिटी: the Devanagari spelling of "security deposit", which the
+        // Latin `deposit`/`security` above can never match.
+        new RegExp(`${HI.fee}|${HI.money}|registration|रजिस्ट्रेशन|जॉइनिंग|किट|डिपॉजिट|सिक्योरिटी`).test(t)) &&
       // No \d here on purpose: normalize() folds digits onto letters, so an
       // amount arrives as "soo" rather than "500". The charge is identified by
       // what it is called, not by the number attached to it.
@@ -1165,7 +1186,7 @@ const RULES = [
         // routinely written mixed-script — Latin "ID" against Devanagari
         // "कार्ड" — which neither `आईडी` nor `id\s*card` could match.
         new RegExp(
-          `(?:registration|रजिस्ट्रेशन|deposit|जॉइनिंग|किट|वेरिफिकेशन|यूनिफॉर्म|आईडी|id\\s*(?:card|कार्ड)|सिक्योरिटी|एक्टिवेशन|अनलॉक|${HI.fee})[^.!?]{0,30}(?:${HI.send}|bhar|भर|${HI.money})`
+          `(?:registration|रजिस्ट्रेशन|deposit|डिपॉजिट|जॉइनिंग|किट|वेरिफिकेशन|यूनिफॉर्म|आईडी|id\\s*(?:card|कार्ड)|सिक्योरिटी|एक्टिवेशन|अनलॉक|${HI.fee})[^.!?]{0,30}(?:${HI.send}|bhar|भर|${HI.money})`
         ).test(t)),
   },
   {
@@ -1178,11 +1199,11 @@ const RULES = [
       // "कॉल कर" but not "कॉलबैक", and no word for refund or cancel at all —
       // which are the two nouns this tactic is *about*.
       (/\b(?:auto[\s-]?renew(?:ed|al)?|subscription|invoice|order|debited|charged|transaction|purchase|renewal)\b/.test(t) ||
-        /\bdebit\s*hua|कट\s*(?:गया|गई)|कटा\s*है|कटे\s*हैं|डेबिट\s*हुआ|खाते\s*से|सब्सक्रिप्शन|ट्रांजैक्शन/.test(t)) &&
+        /\bdebit\s*hua|कट\s*(?:गया|गई)|कटा\s*है|कटे\s*हैं|डेबिट\s*हु(?:आ|ए|ई)|खाते\s*से|रिफ़?ंड[^।.!?]{0,15}(?:बाकी|पेंडिंग|लंबित)|सब्सक्रिप्शन|ट्रांजैक्शन/.test(t)) &&
       (/\b(?:call|dial|contact|helpline|toll[\s-]?free|customer\s*(?:care|support)|reach\s*us)\b/.test(t) ||
         /नंबर\s*पर\s*कॉल|number\s*par\s*call|कॉल\s*(?:कर|बैक)|कॉलबैक|कस्टमर\s*केयर|एग्जीक्यूटिव/.test(t)) &&
       (/\b(?:cancel|refund|dispute|unauthori[sz]ed|not\s*(?:authori[sz]ed|you|recognise|recognize)|if\s*this\s*(?:was|is)\s*not|to\s*stop)\b/.test(t) ||
-        /agar\s*aapne\s*nahi|यदि\s*आपने\s*नहीं|अगर\s*आपने\s*नहीं|nahi\s*kiya|रिफ़?ंड|कैंसिल|वापस\s*(?:पाने|पान)/.test(t)),
+        /agar\s*aapne\s*nahi|यदि\s*आपने\s*नहीं|अगर\s*आपने\s*नहीं|nahi\s*kiya|रिफ़?ंड|कैंसिल|वापस\s*(?:पाने|पान)|धोखाधड़ी[^।.!?]{0,20}कॉल|कॉल[^।.!?]{0,30}पैसा\s*रोका/.test(t)),
   },
   {
     id: "investment_scam",
@@ -1219,7 +1240,7 @@ const RULES = [
       // गारंटीड रिटर्न / पैसा डबल / डेली प्रॉफिट — none of this needs a
       // digit to be recognisable, which matters because normalize() folds
       // digits onto letters ("40%" survives as letters, not as "40").
-      /गारंटीड?\s*रिटर्न|एश्योर्ड\s*रिटर्न|पैसा\s*डबल|डेली\s*प्रॉफिट|मल्टीबैगर|गारंटी[^.!?]{0,20}(?:रिटर्न|प्रॉफिट|एलॉटमेंट)/.test(t) ||
+      /(?:लगा|निवेश)\S*[^।.!?]{0,40}(?:दिन|हफ्ते|महीने)\s*में[^।.!?]{0,25}\sपा(?:एं|इए|ओ)|गारंटीड?\s*रिटर्न|एश्योर्ड\s*रिटर्न|पैसा\s*डबल|डेली\s*प्रॉफिट|मल्टीबैगर|गारंटी[^.!?]{0,20}(?:रिटर्न|प्रॉफिट|एलॉटमेंट)/.test(t) ||
       // The instrument in the same sentence as a promised yield — see
       // INVESTMENT_PROMISE_RE, which replaces the ungated conjunction that used
       // to close this rule.
