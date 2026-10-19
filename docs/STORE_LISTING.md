@@ -249,7 +249,7 @@ Settings ("Every other site").
 
 ### Remote code
 
-None. The extension has no build step and loads no script from any origin; the
+None — answer **No** to "Are you using remote code?". The extension has no build step and loads no script from any origin; the
 Manifest V3 CSP is left at `script-src 'self'`. The statistical model is a JSON
 file shipped inside the package (`extension/engine/model-weights.json`) and is
 read from the extension's own origin, not fetched from a network.
@@ -262,7 +262,8 @@ The dashboard's "Data safety" section asks you to check the categories of user
 data collected and then to affirm three statements. What follows is what is true
 of this code.
 
-**Categories to declare**
+**Categories to declare** (tick four: personally identifiable information,
+authentication information, personal communications, website content)
 
 - **Personally identifiable information** — yes, in one narrow sense. Email
   addresses that appear in the message or on the page are stored locally so the
@@ -276,9 +277,12 @@ of this code.
   `api.anthropic.com` as the credential for their own request.
 - Authentication information also covers the optional abuse.ch Auth-Key, stored
   locally and sent only to `urlhaus.abuse.ch` as a header on the list download.
-- Not collected: health, financial and payment information, personal
-  communications beyond the message text described above, location, web history,
-  and user activity. There is no analytics, no telemetry, no crash reporting and
+- **Personal communications** — yes. The dashboard defines this as "emails,
+  texts, or chat messages", and that is what the Gmail, WhatsApp Web and
+  Telegram Web adapters read. Stored locally as verdict history; transmitted only
+  in the Claude case described below.
+- Not collected: health, financial and payment information, location, web
+  history, and user activity. There is no analytics, no telemetry, no crash reporting and
   no unique identifier of any kind — the extension makes no network request at
   all in its default configuration.
 
