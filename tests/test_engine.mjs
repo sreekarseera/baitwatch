@@ -242,6 +242,24 @@ for (const [name, text] of LEGIT) {
   );
 }
 
+// Page-scale bag of words: wisefax.com/send-fax-from-india scored 84/100,
+// "almost certainly a scam", on delivery_redispatch_fee. The rule counted
+// `delivery` ("after a successful delivery"), `confirm` ("confirm your fax")
+// and `pay` ("Pay-as-you-go") as one pattern although each sat hundreds of
+// characters from the next. Fixed by requiring the three signals inside a
+// window of two adjacent sentences. (The page's "Send a fax immediately"
+// heading separately trips artificial_urgency; it is left out here so this
+// fixture pins only the redispatch fix.)
+{
+  const faxPage = "WiseFax Features Services Help Sign in. Send a fax. No account setup and verification required. Pay-as-you-go service. WiseFax is a user-friendly online fax service. You can send a fax quickly and easily in four simple steps. Subscribe and get your own fax number. Simple account setup. Affordable plans. You can start receiving faxes to your own fax number in no time. We offer fax number subscriptions for only $8.00 per month and for only $4.25 per week.\n\nFax is still popular in India and many companies still use this communication method to send and receive documents securely. How to send fax from India? Visit WiseFax website. Upload your document to the WiseFax. Select recipient's country and enter recipient's fax number. Login into WiseFax and purchase fax tokens, if required. Click on the \"Send\" button to confirm your fax.\n\nWiseFax offers different possibilities. There are no regular monthly costs and no hidden fees. WiseFax will charge you only for successfully sent online faxes. You will get a confirmation to your email address after a successful delivery.";
+  const r = await analyzeLocal(faxPage, { page: { url: "https://wisefax.com/send-fax-from-india/", credentialFields: [] } });
+  check(
+    "legit page: fax service with delivery/confirm/pay-as-you-go scattered across it",
+    r.verdict === VERDICT.SAFE && !r.reasons.some((x) => x.id === "delivery_redispatch_fee"),
+    `scored ${r.score}/100, verdict "${r.verdict}"${r.reasons.length ? `, fired: ${r.reasons.map((x) => x.id).join(", ")}` : ""}`
+  );
+}
+
 /* -------------------------------- punycode --------------------------------- */
 // Vectors from RFC 3492 section 7.1, plus the malformed input a hostile
 // hostname can carry. A hand-written decoder of a published standard is

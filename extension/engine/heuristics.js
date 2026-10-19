@@ -1109,7 +1109,8 @@ const RULES = [
     id: "delivery_redispatch_fee",
     weight: 2.0,
     why: "It says a delivery needs money or re-confirmation before it can reach you. Couriers do not charge you to re-attempt a delivery — the fee is the scam, and the page that collects it collects your card.",
-    test: (t) => {
+    test: (text) => {
+      const redispatchWindow = (t) => {
       // HI.parcel covers the courier/package nouns (पार्सल, कूरियर, ...) but
       // had no Devanagari word for "deliver" itself — the gate silently
       // never opened for a scam that only ever says डिलीवर/डिलीवरी. Checked
@@ -1137,7 +1138,7 @@ const RULES = [
         /\b(?:could\s*not|couldn'?t|cannot|can'?t|failed|unsuccessful|unable\s*to|attempt(?:ed)?|on\s*hold|pending|held|suspended|incomplete|incorrect\s*address)\b|address\s*verification/.test(t) ||
         /रुका|अटका|लंबित|पेंडिंग|होल्ड/.test(t);
       const action =
-        /reschedul|re-?dispatch|re-?deliver|\bconfirm|\bverif|update\s*your\s*address/.test(t) ||
+        /reschedul|re-?dispatch|re-?deliver|\bconfirm(?!ation)|\bverif|update\s*your\s*address/.test(t) ||
         /रिलीज़|दोबारा\s*भेज|पता\s*अपडेट|अपडेट\s*कर/.test(t);
       // Not HI.fee directly: its Latin alternatives ("fee", "charge", "duty")
       // are bare substrings with no \b, by design — proximity-gated call sites
@@ -1155,6 +1156,21 @@ const RULES = [
         /shulk|शुल्क|फ़?ीस|ड्यूटी|चार्ज|क्लियरेंस|भर(?:कर|ें|ना|ो)?/.test(t);
 
       return [failed, action, payment].filter(Boolean).length >= 2;
+      };
+
+      // The three signals have to appear together, not merely on the same
+      // page. A redispatch-fee scam says them in one breath ("could not
+      // deliver... pay a fee to reschedule"), but a page-sized text is a bag of
+      // words: wisefax.com's "after a successful delivery" + "confirm your
+      // fax" + "Pay-as-you-go" scored 84/100 with each word hundreds of
+      // characters from the next. So test every window of two adjacent
+      // sentences, which is as far apart as a real message spreads them.
+      const sentences = text.split(/(?<=[.!?।])\s+|\n+/);
+      if (sentences.length <= 2) return redispatchWindow(text);
+      for (let i = 0; i < sentences.length - 1; i++) {
+        if (redispatchWindow(`${sentences[i]} ${sentences[i + 1]}`)) return true;
+      }
+      return false;
     },
   },
   {
