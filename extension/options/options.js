@@ -7,6 +7,8 @@ import { URLHAUS_ALARM, URLHAUS_REFRESH_MINUTES } from "../engine/urlhaus.js";
 
 const $ = (id) => document.getElementById(id);
 
+$("version").textContent = chrome.runtime.getManifest().version;
+
 const TOGGLES = ["autoScan", "scanGmail", "scanChat", "scanGeneric", "cloudTier", "resolveShorteners", "checkUrlhaus"];
 
 let savedTimer = null;

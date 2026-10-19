@@ -60,11 +60,11 @@ Re-run it and you should see the same numbers.
 
 | | |
 |---|---|
-| Legitimate messages flagged at all | **0.73%** (12 of 1,649) |
-| …of those, called *dangerous* rather than *suspicious* | **0.18%** (3 of 1,649) |
-| Targeted scams missed | **4.00%** (7 of 175) |
-| Hinglish / Devanagari scams missed | **5.71%** (2 of 35) |
-| False alarms on ordinary Hinglish | **0** (of 21) |
+| Legitimate messages flagged at all | **0.48%** (9 of 1,864) |
+| …of those, called *dangerous* rather than *suspicious* | **0.16%** (3 of 1,864) |
+| Targeted scams missed | **0.24%** (1 of 415) |
+| Hinglish / Devanagari scams missed | **0.00%** (0 of 270) |
+| False alarms on ordinary Hinglish | **1.32%** (2 of 152) |
 
 The honest accuracy figure for the model layer on its own is the cross-validated
 one `training/train_model.py` prints: **94.77% ±1.59%** over 3,248 rows, with

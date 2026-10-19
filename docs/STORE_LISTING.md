@@ -95,25 +95,25 @@ and gives an opinion.
 >
 > **Accuracy, measured**
 >
-> Against a 3,248-message benchmark of 1,599 scams and 1,649 ordinary messages,
-> the on-device layers alone raise a false alarm on 0.73% of legitimate messages
-> and call a legitimate message "almost certainly a scam" 0.18% of the time. On
-> the 175 curated messages representing the tactics it is built for, it misses
-> 4.00%. On Hindi and Hinglish scams it misses 5.71%, with no false alarms on
-> ordinary Hinglish. These are the project's own published test gates, run on
+> Against a 3,703-message benchmark of 1,839 scams and 1,864 ordinary messages,
+> the on-device layers alone raise a false alarm on 0.48% of legitimate messages
+> and call a legitimate message "almost certainly a scam" 0.16% of the time. On
+> the 415 curated messages representing the tactics it is built for, it misses
+> 0.24%. On Hindi and Hinglish scams it misses 0.00% of 270, with false alarms
+> on 1.32% of ordinary Hinglish. These are the project's own published test gates, run on
 > every change; the code and the corpus are on GitHub under the MIT licence.
 >
 > Source: https://github.com/sreekarseera/baitwatch
 
 ### Caveats a reviewer may hold you to
 
-- The 0.73% / 4.00% / 5.71% figures are printed by `tests/test_benchmark.mjs`
+- The 0.48% / 0.24% / 0.00% / 1.32% figures are printed by `tests/test_benchmark.mjs`
   and are for the **on-device layers only** (`analyzeLocal`), which is the
   default configuration. They are not a claim about the Claude tier.
 - The benchmark corpus overlaps the model's training rows, so it is a
   regression alarm rather than an independent accuracy claim. The listing avoids
   the phrase "accuracy" for exactly that reason; `test_benchmark.mjs` documents
-  the overlap. The model's own cross-validated figure — 95.85% validation
+  the overlap. The model's own cross-validated figure — 94.3% validation
   accuracy, 6,000 terms — is shown in the extension's Settings page and is not
   used as a marketing number here.
 
@@ -326,16 +326,21 @@ be described exactly rather than softened:
 
 ---
 
-## Assets still needed before submission
+## Assets for submission
 
-The dashboard will not accept the listing without these, and none of them exist
-in the repo yet:
+All of these live in `docs/store-assets/` and were captured from the real
+extension loaded in Chrome for Testing, using only the demo messages in
+`docs/demo-examples.txt` and a made-up inbox. No real person's message appears.
 
-- **Screenshots**: at least one, 1280×800 or 640×400. `docs/DEMO_SCRIPT.md`
-  describes the flows worth capturing; `docs/demo-examples.txt` has the messages
-  to paste. Screenshots must show the real UI, and the pasted text must not be a
-  real person's message.
-- **Small promo tile**: 440×280.
-- **Privacy policy URL**: `docs/PRIVACY.md` has the text. It must be reachable at
-  a public URL — the rendered GitHub page for that file is acceptable.
-- **Support/homepage URL**: the GitHub repository.
+- **Screenshots** (1280×800, 24-bit PNG, in the order to upload):
+  1. `01-scam-verdict.png` — popup flagging a bank-suspension scam, 91/100.
+  2. `02-remote-access-scam.png` — popup flagging a fake tech-support message.
+  3. `03-inbox-banner.png` — the in-page banner on a scam message.
+  4. `04-safe-message.png` — popup staying quiet on an ordinary message.
+  5. `05-settings-network.png` — Settings, showing every network feature off by
+     default.
+- **Small promo tile** (440×280): `promo-tile-440x280.png`.
+- **Package**: `python3 tools/package.py` writes `dist/baitwatch-2.1.0.zip`.
+- **Privacy policy URL**:
+  https://github.com/sreekarseera/baitwatch/blob/main/docs/PRIVACY.md
+- **Support/homepage URL**: https://github.com/sreekarseera/baitwatch
