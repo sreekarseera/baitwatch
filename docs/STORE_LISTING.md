@@ -25,8 +25,9 @@ Store field: "Description", 132 characters maximum. This is also the manifest's
 
 ## Category
 
-Productivity. It is not a "privacy and security" blocker or proxy; it reads text
-and gives an opinion.
+Privacy & Security. It detects scams and phishing, which is what people browsing
+that category are looking for. It is not a blocker or a proxy: it reads text and
+gives an opinion, and the description says so.
 
 ---
 
@@ -93,7 +94,7 @@ and gives an opinion.
 > abuse.ch's public URLhaus list (a plain download; no link from your messages
 > is sent). Details are in the privacy policy.
 >
-> **Accuracy, measured**
+> **Tested against a benchmark**
 >
 > Against a 3,703-message benchmark of 1,839 scams and 1,864 ordinary messages,
 > the on-device layers alone raise a false alarm on 0.48% of legitimate messages
