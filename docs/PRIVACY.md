@@ -1,11 +1,11 @@
 # BaitWatch privacy policy
 
-Last updated: 6 August 2026. Applies to BaitWatch version 2.1.0.
+Last updated: 19 October 2026. Applies to BaitWatch version 2.1.0.
 
 BaitWatch is an open-source browser extension that reads messages you are
 already looking at and tells you whether they look like a scam. This document
-describes what it reads, what it keeps, and the one situation in which anything
-leaves your computer. It describes the code in this repository, which you can
+describes what it reads, what it keeps, and the three optional features, all
+off by default, that can make it contact a server. It describes the code in this repository, which you can
 read yourself: every claim below names the file that implements it.
 
 There is no server in this project. Nobody operates a BaitWatch backend, there
@@ -63,7 +63,8 @@ file that writes any of it is `extension/lib/storage.js`.
 | `history` | One record per message checked: the message text, the sender address if known, the verdict, the risk score, the explanation and reasons shown to you, whether the verdict came from the on-device layers or from Claude, where it was found, and a timestamp. Page scans store only the first 1,000 characters of the page. Records are deduplicated on text and sender, and the list is capped at the 500 most recent. |
 | `blocklist` | Email addresses or numbers you pressed "Block" on, lowercased. |
 | `allowlist` | Senders you marked as safe, lowercased. |
-| `settings` | Your toggles — automatic scanning, which sites, how severe a verdict has to be before you are warned, the history cap — and, if you enabled the optional Claude tier, your Anthropic API key. |
+| `settings` | Your toggles — automatic scanning, which sites, how severe a verdict has to be before you are warned, the history cap — and, if you entered them, your Anthropic API key and your abuse.ch Auth-Key. |
+| `urlhausFeed` | Only if you switched on the URLhaus check: a public list of known-malicious web addresses downloaded from abuse.ch, and the time it was downloaded. It contains nothing about you. |
 | `stats` | Three counters: messages checked, messages flagged, and Claude requests attempted. Numbers only. Failed requests are counted too, so this is a complete record of how often your text was sent for a second opinion. |
 
 Two consequences worth being explicit about, because they follow from the design
@@ -82,23 +83,32 @@ rather than from any promise:
 
 ## What never leaves your computer
 
-In the default configuration — the Claude second opinion switched off, which is
-how the extension installs — nothing does. The detector ships inside the
+In the default configuration — all three optional network features below
+switched off, which is how the extension installs — nothing does. The detector ships inside the
 extension: a rule engine, a URL and domain checker, and a statistical model
 stored as a JSON file in the package. Analysis runs in the extension's service
 worker on your machine (`extension/background/service-worker.js`). Your history,
-blocklist, allowlist, settings, counters and API key are never transmitted
-anywhere under any setting.
+blocklist, allowlist, settings and counters are never transmitted anywhere
+under any setting. Your Anthropic API key and abuse.ch Auth-Key are sent only
+to their own services, as the credential for your own request, as described
+below.
 
 There is no analytics, no telemetry, no error reporting, no advertising, no
 tracking identifier, and no unique installation ID. The extension does not sell
 or share any data, because it does not have anywhere to send it.
 
-## The one exception: the Claude second opinion
+## Optional network features
+
+Three features can contact a server. Each is off at install, and each needs a
+browser permission that Chrome asks you for at the moment you switch the feature
+on, and that the extension gives back when you switch it off. The first is the
+only one that transmits any of your message text.
+
+### 1. The Claude second opinion
 
 The extension can ask Anthropic's Claude for a reasoned second opinion on
-messages the on-device layers cannot settle. This is the only feature that
-transmits anything, and this section is the reason this document exists.
+messages the on-device layers cannot settle. It is the only feature that sends
+text you are reading.
 
 **It is off unless you turn it on.** The setting ships as `cloudTier: false`. In
 addition, it does nothing until you have saved an Anthropic API key: both the
@@ -136,9 +146,9 @@ identifier for you or for your browser.
 
 **One further request.** Pressing "Test" next to the API key field in Settings
 sends a single one-token request to the same endpoint, containing the word "hi"
-and nothing else, purely to confirm the key works (`verifyApiKey`). It is the
-only outbound request that can happen while the second-opinion toggle is off,
-and it happens only when you press that button.
+and nothing else, purely to confirm the key works (`verifyApiKey`). It
+happens only when you press that button, and it is the only request that can
+reach Anthropic while the second-opinion toggle is off.
 
 **What happens at the other end.** The request goes to Anthropic and to no one
 else. Anthropic's handling of it is governed by the terms and privacy policy
@@ -149,6 +159,39 @@ network to give you an answer.
 
 **Turning it off.** Unchecking the setting stops all requests immediately.
 Clearing the API key field also stops them, and removes the key from storage.
+
+### 2. Expanding shortened links
+
+Setting: "resolveShorteners". Off by default. When on, and a message you are
+checking contains a link from one of 19 well-known shortening services (bit.ly,
+t.co, tinyurl.com and similar; the list is the `optional_host_permissions` in
+`extension/manifest.json`), the extension sends one `HEAD` request to that
+short link and reads where it redirects to, so the real destination can be
+checked like any other link (`extension/engine/shortener.js`).
+
+What this means in practice, because it is not obvious: **the link is opened
+for you.** The shortening service, which is chosen by whoever wrote the message,
+sees a request for that short link from your IP address. For a scam link, that
+tells the sender the link was looked at. Only the first redirect is followed;
+nothing from the message other than the short link itself is sent, and the
+extension never loads the destination page. Turning the setting off removes the
+permission.
+
+### 3. The URLhaus malicious-link list
+
+Setting: "checkUrlhaus". Off by default. When on, the extension downloads a
+public list of known-malicious web addresses from abuse.ch
+(`https://urlhaus.abuse.ch/downloads/csv_recent/`) once when you switch it on
+and then every 60 minutes, and stores it locally. Links in messages are
+compared against that local copy. **No link from your messages is ever sent to
+abuse.ch**: the request is a plain download that is the same for every user
+(`extension/engine/urlhaus.js`).
+
+abuse.ch will see your IP address making that download, as any web server would.
+If you have entered an abuse.ch Auth-Key in Settings it is sent in an `Auth-Key`
+header with the download; the feed does not require one today, so you can leave
+it blank. Turning the setting off removes the permission, stops the hourly
+download and deletes the stored list.
 
 ## Your control over what is stored
 

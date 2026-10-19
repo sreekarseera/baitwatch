@@ -80,10 +80,18 @@ and gives an opinion.
 >
 > Off unless you turn it on. If you paste your own Anthropic API key into
 > Settings, messages the on-device check cannot settle confidently are sent to
-> Anthropic's API for a reasoned second opinion. That is the only case in which
-> anything leaves your computer, it is billed to your own key, and the extension
-> does nothing at all with it if you leave the setting off. See the privacy
-> policy for exactly what is sent.
+> Anthropic's API for a reasoned second opinion. That is the only feature that
+> sends the text you are reading, it is billed to your own key, and the
+> extension does nothing at all with it if you leave the setting off. See the
+> privacy policy for exactly what is sent.
+>
+> **Optional: link checks**
+>
+> Two more settings, both off until you turn them on and each asking Chrome for
+> permission first: expanding shortened links (the extension requests the short
+> link, from your connection, to see where it leads) and checking links against
+> abuse.ch's public URLhaus list (a plain download; no link from your messages
+> is sent). Details are in the privacy policy.
 >
 > **Accuracy, measured**
 >
@@ -185,8 +193,42 @@ It covers exactly one endpoint, `POST /v1/messages`, called from
 every escalation (`chrome.permissions.contains`), so a permission revoked from
 `chrome://extensions` stops the feature rather than producing failed requests.
 
-The extension holds no other host permission and contacts no other server. A
-newly installed copy can reach nothing at all — `tests/run_all.py` asserts this
+### Optional host permissions: 19 link-shortener origins
+
+`https://bit.ly/*`, `https://t.co/*` and 17 others, declared under
+`optional_host_permissions` and requested together only when the user switches
+on "resolveShorteners". The extension sends one `HEAD` request to a shortened
+link found in a message and reads the first redirect to learn the real
+destination (`extension/engine/shortener.js`). Only the first hop is followed;
+the destination page is never loaded. Switching the setting off removes the
+grant.
+
+### Optional host permission: `https://urlhaus.abuse.ch/*`
+
+Requested only when the user switches on "checkUrlhaus". It lets the extension
+download abuse.ch's public malicious-URL list (`extension/engine/urlhaus.js`)
+once and then hourly, and match message links against the local copy. No link
+from a message is ever sent to abuse.ch. Switching the setting off removes the
+grant, cancels the alarm and deletes the stored list.
+
+### `webRequest`
+
+Used for exactly one call, `chrome.webRequest.onBeforeRedirect`, in
+`extension/engine/shortener.js`. A `fetch` with `redirect: "manual"` hides the
+`Location` header from extensions, so the redirect target can only be observed
+this way. The permission is non-blocking (no `webRequestBlocking`), grants no
+network access by itself, and only fires for origins the user has separately
+granted by enabling shortener expansion. It never reads or modifies other
+traffic.
+
+### `alarms`
+
+Schedules the hourly URLhaus list refresh (`extension/options/options.js`
+creates the alarm, `extension/background/service-worker.js` handles it). The
+alarm exists only while the URLhaus check is on.
+
+Beyond the three optional groups above, the extension holds no host permission
+and contacts no other server. A newly installed copy can reach nothing at all — `tests/run_all.py` asserts this
 in a real browser by reading `chrome.permissions.getAll()` from the service
 worker.
 
@@ -231,6 +273,8 @@ of this code.
 - **Authentication information** — yes, if the user opts in. The Anthropic API
   key the user pastes into Settings is stored locally and sent only to
   `api.anthropic.com` as the credential for their own request.
+- Authentication information also covers the optional abuse.ch Auth-Key, stored
+  locally and sent only to `urlhaus.abuse.ch` as a header on the list download.
 - Not collected: health, financial and payment information, personal
   communications beyond the message text described above, location, web history,
   and user activity. There is no analytics, no telemetry, no crash reporting and
@@ -240,20 +284,22 @@ of this code.
 **The three affirmations**
 
 - *I do not sell or transfer user data to third parties outside of the approved
-  use cases.* — True. The sole transfer is the user's own message text to
+  use cases.* — True. The sole transfer of message text is to
   Anthropic, at the user's explicit instruction and on the user's own API key.
   Anthropic is the user's chosen processor here, not a third party the extension
-  sells to.
+  sells to. The shortener and URLhaus features send no message content (see
+  below).
 - *I do not use or transfer user data for purposes unrelated to my item's single
-  purpose.* — True. The only outbound request in the codebase asks for a scam
-  verdict on the message the user is checking.
+  purpose.* — True. Every outbound request serves the scam check: a verdict on the
+  message the user is checking (Claude), the first redirect of a shortened link
+  in it (shortener expansion), or a public blocklist download (URLhaus).
 - *I do not use or transfer user data to determine creditworthiness or for
   lending purposes.* — True.
 
 **The Claude tier, stated precisely**
 
-This is the one thing that sends data off the device, so it needs to be
-described exactly rather than softened:
+This is the one thing that sends message text off the device, so it needs to
+be described exactly rather than softened:
 
 - It is **off by default** (`cloudTier: false` in `extension/lib/storage.js`) and
   additionally does nothing until the user has saved an API key — both
